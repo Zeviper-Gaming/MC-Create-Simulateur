@@ -30,6 +30,74 @@ def _pos(p) -> str:
     return "%d, %d, %d" % tuple(p)
 
 
+class EditableName(QtWidgets.QLineEdit):
+    """Un nom qu'on change d'un clic gauche.
+
+    « create:analog_lever (14, 13, 20) » ne dit rien de ce que fait le levier ;
+    « ballast avant » si. Le champ se lit comme une etiquette tant qu'on n'y
+    touche pas, et devient un champ de saisie au clic. Entree valide, Echap
+    annule, et un nom vide restaure le libelle par defaut.
+    """
+
+    renamed = QtCore.Signal(str)
+    clicked = QtCore.Signal()
+
+    def __init__(self, given: str, fallback: str, parent=None):
+        super().__init__(given or fallback, parent)
+        self.fallback = fallback
+        self._before = self.text()
+        self.setReadOnly(True)
+        self.setFrame(False)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("clic pour renommer · %s" % fallback)
+        self._paint(False)
+        self.editingFinished.connect(self._commit)
+
+    def _paint(self, editing: bool) -> None:
+        named = self.text() != self.fallback
+        color = "#e2e6ec" if named else "#9aa2ae"
+        if editing:
+            self.setStyleSheet("QLineEdit { background: #1b2027; color: #e2e6ec;"
+                               " border: 1px solid #4a90d9; border-radius: 3px; }")
+        else:
+            self.setStyleSheet("QLineEdit { background: transparent; color: %s;"
+                               " border: none; font-weight: %s; }"
+                               % (color, "bold" if named else "normal"))
+
+    def set_given(self, given: str) -> None:
+        self.setText(given or self.fallback)
+        self._paint(False)
+
+    def mousePressEvent(self, event) -> None:
+        if self.isReadOnly() and event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            self._before = self.text()
+            self.setReadOnly(False)
+            self._paint(True)
+            self.selectAll()
+            self.setFocus(QtCore.Qt.FocusReason.MouseFocusReason)
+            return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if (event.key() == QtCore.Qt.Key.Key_Escape and not self.isReadOnly()):
+            self.setText(self._before)
+            self.clearFocus()
+            return
+        super().keyPressEvent(event)
+
+    def _commit(self) -> None:
+        if self.isReadOnly():
+            return
+        self.setReadOnly(True)
+        text = self.text().strip()
+        if not text or text == self.fallback:
+            self.setText(self.fallback)
+            text = ""
+        self._paint(False)
+        self.renamed.emit(text)
+
+
 class Section(QtWidgets.QWidget):
     """Un volet repliable, comme le bandeau d'Universe Sandbox."""
 
@@ -86,8 +154,9 @@ class LeverRow(QtWidgets.QFrame):
 
     moved = QtCore.Signal(object, int)
     selected = QtCore.Signal(object)
+    renamed = QtCore.Signal(object, str)
 
-    def __init__(self, lever, parent=None):
+    def __init__(self, lever, names=None, parent=None):
         super().__init__(parent)
         self.lever = lever
         self.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
@@ -97,9 +166,12 @@ class LeverRow(QtWidgets.QFrame):
         layout.setSpacing(2)
 
         kind = lever.block.split(":")[-1].replace("_", " ")
-        head = QtWidgets.QLabel("%s · %s" % (kind, _pos(lever.pos)))
-        head.setStyleSheet(STRONG)
-        layout.addWidget(head)
+        fallback = "%s · %s" % (kind, _pos(lever.pos))
+        given = names.get("levier", lever.pos) if names is not None else ""
+        self.head = EditableName(given, fallback)
+        self.head.renamed.connect(lambda text: self.renamed.emit(self.lever, text))
+        self.head.clicked.connect(lambda: self.selected.emit(self.lever))
+        layout.addWidget(self.head)
 
         line = QtWidgets.QHBoxLayout()
         self.slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
@@ -150,6 +222,7 @@ class ControlPanel(QtWidgets.QScrollArea):
     situation_changed = QtCore.Signal()
     selection_changed = QtCore.Signal(object)
     sim_action = QtCore.Signal(str)
+    renamed = QtCore.Signal()
 
     def __init__(self, model, sim, parent=None):
         super().__init__(parent)
@@ -170,6 +243,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         self._transmission_rows: list[tuple] = []
         self._propulsion_rows: list[tuple] = []
         self._pocket_rows: list[tuple] = []
+        self._nameplates: list[tuple] = []
 
         self._build_simulation()
         self._build_levers()
@@ -179,6 +253,19 @@ class ControlPanel(QtWidgets.QScrollArea):
         self._build_situation()
         self.column.addStretch(1)
         self.refresh()
+
+    # -- nommage -----------------------------------------------------------
+    def _nameplate(self, kind: str, identifier, fallback: str) -> "EditableName":
+        """Une etiquette renommable d'un clic, persistee a cote du vaisseau."""
+        plate = EditableName(self.model.names.get(kind, identifier), fallback)
+        plate.renamed.connect(
+            lambda text, k=kind, i=identifier: self._rename(k, i, text))
+        self._nameplates.append((kind, identifier, plate))
+        return plate
+
+    def _rename(self, kind: str, identifier, text: str) -> None:
+        self.model.names.set(kind, identifier, text)
+        self.renamed.emit()
 
     # -- sections ----------------------------------------------------------
     def _section(self, title: str, expanded: bool = True) -> Section:
@@ -238,9 +325,11 @@ class ControlPanel(QtWidgets.QScrollArea):
         section = self._section("Commandes de bord")
         self.lever_rows = []
         for lever in levers:
-            row = LeverRow(lever)
+            row = LeverRow(lever, self.model.names)
             row.moved.connect(self._lever_moved)
             row.selected.connect(self.selection_changed.emit)
+            row.renamed.connect(
+                lambda lv, text: self._rename("levier", lv.pos, text))
             section.add(row)
             self.lever_rows.append(row)
 
@@ -258,8 +347,8 @@ class ControlPanel(QtWidgets.QScrollArea):
 
         for key, burners in groups.items():
             name = " / ".join(part.split(":")[-1] for part in key if part)
-            title = QtWidgets.QLabel("canal %s — %d bruleur(s)" % (name, len(burners)))
-            title.setStyleSheet(STRONG)
+            title = self._nameplate(
+                "canal", name, "canal %s — %d bruleur(s)" % (name, len(burners)))
             section.add(title)
             status = QtWidgets.QLabel()
             status.setStyleSheet(MUTED)
@@ -277,6 +366,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             self._burner_rows.append((key, burners, status))
 
         for index, pocket in enumerate(organ.pockets):
+            section.add(self._nameplate("poche", index, "poche %d" % (index + 1)))
             label = QtWidgets.QLabel()
             label.setStyleSheet(MUTED)
             label.setWordWrap(True)
@@ -291,6 +381,8 @@ class ControlPanel(QtWidgets.QScrollArea):
             return
         section = self._section("Transmissions", expanded=False)
         for pos in positions:
+            section.add(self._nameplate("transmission", pos,
+                                        "transmission · %s" % _pos(pos)))
             label = QtWidgets.QLabel()
             label.setStyleSheet(MUTED)
             label.setWordWrap(True)
@@ -305,6 +397,8 @@ class ControlPanel(QtWidgets.QScrollArea):
             return
         section = self._section("Propulsion")
         for bearing in bearings:
+            section.add(self._nameplate("palier", bearing.pos,
+                                        "helice · %s" % _pos(bearing.pos)))
             label = QtWidgets.QLabel()
             label.setStyleSheet(MUTED)
             label.setWordWrap(True)

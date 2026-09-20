@@ -199,8 +199,16 @@ class Simulation:
         rep["stress"] = self.stress.budget(speeds_for_report, st.source_rpm)
         rep["surcharge"] = any(r["surcharge"] for r in rep["stress"])
         rep["redstone"] = self.redstone.concordance()
-        rep["commandes"] = [lv.report(st.commands.get(lv.pos, lv.initial))
-                            for lv in self.redstone.levers]
+        names = self.model.names
+        rep["commandes"] = []
+        for lv in self.redstone.levers:
+            entry = lv.report(st.commands.get(lv.pos, lv.initial))
+            given = names.get("levier", lv.pos)
+            if given:
+                entry["nom"] = given
+            rep["commandes"].append(entry)
+        if names:
+            rep["noms"] = dict(sorted(names.entries.items()))
 
         rep["ballons"] = self.balloons.report(st.gas)
         rep["levitite"] = self.levitite.report(m.total)
@@ -261,12 +269,15 @@ class Simulation:
         """Les defauts invisibles en jeu, qui coutent des heures."""
         rep = rep or {}
         out: list[dict] = []
+        names = self.model.names
 
         for b in self.bearings.bearings:
             if b.contacts:
                 out.append({
                     "code": "F5.1", "gravite": "grave",
                     "titre": "rotor de palier en contact avec la coque",
+                    "organe": names.describe("palier", b.pos,
+                                             "palier %s" % (list(b.pos),)),
                     "detail": ("le palier en %s touche la structure : en jeu il "
                                "refuse de s'assembler" % (list(b.pos),)),
                     "blocs": [c["vers"] for c in b.contacts[:8]],
@@ -276,6 +287,7 @@ class Simulation:
                 out.append({
                     "code": "F5.2", "gravite": "moyen",
                     "titre": "poche de ballon saturee",
+                    "organe": names.describe("poche", i, "poche %d" % (i + 1)),
                     "detail": ("poche %d : demande %.0f m3 pour %d m3 de capacite, "
                                "le surplus est perdu"
                                % (i + 1, p.max_demand, p.capacity)),
@@ -285,6 +297,7 @@ class Simulation:
                 out.append({
                     "code": "F5.3", "gravite": "faible",
                     "titre": "poche sous-exploitee",
+                    "organe": names.describe("poche", i, "poche %d" % (i + 1)),
                     "detail": ("poche %d : %.0f m3 demandes sur %d disponibles, "
                                "de la portance dort" % (i + 1, p.max_demand,
                                                         p.capacity)),

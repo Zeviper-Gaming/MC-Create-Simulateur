@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
+from ..data.names import Names
 from ..data.nbt import Pos, Structure
 from ..data.tables import BlockProperties, Tables
 
@@ -86,6 +87,7 @@ class VehicleModel:
 
     structure: Structure
     tables: Tables
+    names: Names = field(default_factory=Names)
     props: BlockProperties = field(init=False)
     organs: dict[str, Organ] = field(default_factory=dict, init=False)
     order: list[str] = field(default_factory=list, init=False)
@@ -108,7 +110,9 @@ class VehicleModel:
         from .redstone import RedstoneOrgan
         from .stress import StressOrgan
 
-        model = cls(Structure(path), tables or Tables.load())
+        structure = Structure(path)
+        model = cls(structure, tables or Tables.load(),
+                    Names.for_structure(path))
         # L'ordre est celui des dependances : les voiles d'un palier alimentent
         # le regime d'un moulin, donc les paliers passent avant la cinetique.
         for cls_ in (MassOrgan, DragOrgan, LevititeOrgan, RedstoneOrgan,

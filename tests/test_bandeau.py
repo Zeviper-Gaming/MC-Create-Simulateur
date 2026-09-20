@@ -49,8 +49,9 @@ def test_une_commande_d_interface_par_commande_reelle(panel):
     assert len(rows) == len(levers) == 4
     for row in rows:
         assert row.slider.minimum() == 0 and row.slider.maximum() == 15
-        assert str(row.lever.pos[0]) in row.findChildren(
-            QtWidgets.QLabel)[0].text()
+        # le libelle par defaut porte la position, meme si l'utilisateur
+        # a renomme le levier : on doit pouvoir le retrouver en jeu
+        assert str(row.lever.pos[0]) in row.head.fallback
 
 
 def test_un_vaisseau_sans_roues_n_a_pas_de_section_roues(panel):

@@ -83,6 +83,7 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.panel.situation_changed.connect(self._refresh_scene)
         self.panel.selection_changed.connect(self._select_lever)
         self.panel.sim_action.connect(self._sim_action)
+        self.panel.renamed.connect(self._refresh_scene)
 
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(TICK_MS)
@@ -179,9 +180,11 @@ class VehicleWindow(QtWidgets.QMainWindow):
             [([lever.pos], SELECTED_COLOR), (sorted(lever.targets), TARGET_COLOR)],
             self.model.structure.size)
         self.view.set_highlight(mesh)
+        libelle = self.model.names.describe(
+            "levier", lever.pos, "levier %s" % (list(lever.pos),))
         self.statusBar().showMessage(
-            "levier %s · commande %d organe(s) · %s"
-            % (lever.pos, len(lever.targets), self._base))
+            "%s · commande %d organe(s) · %s"
+            % (libelle, len(lever.targets), self._base))
 
     # -- accessoires --------------------------------------------------------
     def resizeEvent(self, event) -> None:

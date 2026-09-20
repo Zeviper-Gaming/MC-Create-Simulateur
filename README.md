@@ -272,6 +272,13 @@ pas de section roues. Un brûleur commandé par un levier n'est pas réglable di
 on actionne le levier, et le brûleur suit. C'est ce qui distingue un simulateur d'un
 tableur — on pilote le véhicule tel qu'il est câblé, pas ses paramètres internes.
 
+**Tout se renomme d'un clic gauche.** Leviers, canaux de brûleurs, poches, hélices,
+transmissions : le nom donné s'affiche en gras à la place du libellé technique, et
+celui-ci n'est jamais perdu — la barre d'état dit « gaz principal (levier [15, 13, 20]) »
+pour qu'on retrouve le bloc en jeu. Les noms vivent dans un `.noms.json` à côté du
+vaisseau ; le `.nbt` d'origine n'est jamais écrit. Entrée valide, Échap annule, un nom
+vide restaure le défaut.
+
 | Section | Contenu |
 |---|---|
 | Simulation | pause, ×1/×4/×16, avance d'un tick, remise à zéro, convergence directe |
