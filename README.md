@@ -241,10 +241,26 @@ transmission analogique découple à 15 et passe en prise directe à 0. Deux man
 voisines sur la même console ne se lisent donc pas dans le même sens, et le bandeau
 l'écrit maintenant pour chacune.
 
-Deux réserves sont tenues explicites dans le fichier de mesures, parce qu'une mesure à un
-seul point n'est pas une loi : la loi *par voile* n'est pas départagée d'un impact
-constant de 32 su/tr tant qu'une hélice de 12 voiles n'a pas été lue (6 144 su contre
-8 192), et le sens absolu de la poussée reste à trancher sur cette coque.
+### La loi de l'impact, départagée
+
+Un point de mesure ne fait pas une loi : un impact constant de 32 su/tr expliquait tout
+aussi bien les 8 192 su de l'hélice de 16 voiles. Cinq lectures l'ont tranché.
+
+| Voiles | Régime | Lu en jeu | su/tr | su/tr/voile |
+|---|---|---|---|---|
+| 16 | 256 tr/min | 8 192 su | 32 | **2,0000** |
+| 12 | 256 tr/min | 6 144 su | 24 | **2,0000** |
+| 12 | 125 tr/min | 3 000 su | 24 | **2,0000** |
+| 8 | 256 tr/min | 4 096 su | 16 | **2,0000** |
+| 8 | 125 tr/min | 2 000 su | 16 | **2,0000** |
+
+Trois rotors différents excluent l'impact constant ; 125 tr/min n'est pas sur l'escalier
+des 16 crans, c'est donc un point hors grille qui établit la linéarité en régime et non
+une redondance. Un test vérifie que la bibliothèque contient toujours un point qui
+*exclut* l'hypothèse concurrente — une loi seulement compatible avec ses mesures n'est
+pas une loi établie.
+
+Reste une réserve, tenue explicite : le sens absolu de la poussée sur cette coque.
 
 Le niveau 4 (bibliothèque de scénarios de non-régression) demande un corpus : il vient
 avec L4.

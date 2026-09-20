@@ -87,8 +87,8 @@
   },
   "impact_scales_with_sails": {
    "mod": "mesure en jeu (niveau 3 du cahier)",
-   "source": "data/mesures/jeu.json : cachalot_volant_v4, helice centrale 16 voiles a 256 tr/min, Stressometer = 8192 su, soit 32 su/tr = 2,0 su/tr x 16 voiles. L'impact du palier n'est donc pas l'impact fixe de la table [kinetics.stressValues.v2] mais cette valeur PAR VOILE, comme la capacite du moulin est par tour.",
-   "note": "un seul point de mesure : la loi lineaire est le choix le plus proche du moulin, mais une helice de 12 voiles la departagerait d'un impact constant (6144 su attendus contre 8192).",
+   "source": "data/mesures/jeu.json : cinq lectures au Stressometer sur cachalot_volant_v4, trois rotors (16, 12 et 8 voiles) et deux regimes (256 et 125 tr/min). Les cinq donnent 2,0000 su/tr PAR VOILE. L'impact d'un palier d'helice n'est donc pas l'impact fixe de [kinetics.stressValues.v2] mais cette valeur par voile, comme la capacite du moulin est par tour.",
+   "note": "loi departagee : un impact constant de 32 su/tr aurait donne 8192 su sur le rotor de 12 voiles, la lecture donne 6144. La linearite en regime est acquise par le point hors grille a 125 tr/min, qui n'est pas sur l'escalier des 16 crans.",
    "value": [
     "aeronautics:propeller_bearing",
     "aeronautics:gyroscopic_propeller_bearing"

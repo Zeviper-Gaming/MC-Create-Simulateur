@@ -57,7 +57,9 @@
    "observateur": "Florian",
    "vaisseau": "cachalot_volant_v4.nbt",
    "instrument": "Stressometer, meme jauge",
-   "commandes": {"59,11,10": 0},
+   "commandes": {
+    "59,11,10": 0
+   },
    "grandeur": "stress_su",
    "reseau": 0,
    "attendu": 8192.0,
@@ -65,12 +67,73 @@
    "valide": [
     "l'impact d'un palier d'helice se compte PAR VOILE : 2,0 su/tr x 16 voiles",
     "soit 32 su/tr, et 8192 su a 256 tr/min"
+   ]
+  },
+  {
+   "id": "cachalot-v4-helice-laterale-a-fond",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "Stressometer, arbre du moulin",
+   "commandes": {
+    "57,11,11": 0
+   },
+   "grandeur": "stress_su",
+   "reseau": 0,
+   "attendu": 6144.0,
+   "tolerance": 0.5,
+   "valide": [
+    "2,0 su/tr x 12 voiles = 24 su/tr, soit 6144 su a 256 tr/min",
+    "c'est la lecture qui a tue l'hypothese d'un impact constant de 32 su/tr"
+   ]
+  },
+  {
+   "id": "loi-impact-helice",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "Stressometer, rotor modifie entre les series",
+   "grandeur": "loi_impact",
+   "bloc_type": "aeronautics:propeller_bearing",
+   "points": [
+    {
+     "voiles": 16,
+     "rpm": 256,
+     "su": 8192
+    },
+    {
+     "voiles": 12,
+     "rpm": 256,
+     "su": 6144
+    },
+    {
+     "voiles": 12,
+     "rpm": 125,
+     "su": 3000
+    },
+    {
+     "voiles": 8,
+     "rpm": 256,
+     "su": 4096
+    },
+    {
+     "voiles": 8,
+     "rpm": 125,
+     "su": 2000
+    }
    ],
-   "reserve": [
-    "Un seul point de mesure. La loi lineaire est le choix le plus proche du",
-    "moulin, mais elle n'est pas departagee d'un impact constant de 32 su/tr :",
-    "une helice de 12 voiles a fond donnerait 6144 su si la loi est lineaire,",
-    "8192 su si elle est constante."
+   "tolerance": 0.5,
+   "valide": [
+    "impact = 2,0 su/tr PAR VOILE : les cinq points donnent 2,0000",
+    "proportionnalite au regime : 125 tr/min n'est pas sur l'escalier des",
+    "16 crans, c'est donc un point hors grille et non une redondance",
+    "trois rotors differents (16, 12, 8 voiles) : la loi est lineaire en",
+    "voiles, pas un palier constant ni une puissance"
+   ],
+   "note": [
+    "Les series a 8 voiles ont ete relevees sur un rotor demonte : elles ne",
+    "sont pas rejouables depuis le fichier, seule la loi l'est. C'est",
+    "pourquoi cette entree verifie la FORMULE et non un etat du vaisseau."
    ]
   },
   {
@@ -83,9 +146,22 @@
    "bloc": "66,4,12",
    "levier": "59,11,10",
    "escalier": {
-    "15": 0.0, "14": 16.0, "13": 32.0, "12": 48.0, "11": 64.0, "10": 80.0,
-    "9": 96.0, "8": 112.0, "7": 128.0, "6": 144.0, "5": 160.0, "4": 176.0,
-    "3": 192.0, "2": 208.0, "1": 224.0, "0": 256.0
+    "15": 0.0,
+    "14": 16.0,
+    "13": 32.0,
+    "12": 48.0,
+    "11": 64.0,
+    "10": 80.0,
+    "9": 96.0,
+    "8": 112.0,
+    "7": 128.0,
+    "6": 144.0,
+    "5": 160.0,
+    "4": 176.0,
+    "3": 192.0,
+    "2": 208.0,
+    "1": 224.0,
+    "0": 256.0
    },
    "tolerance": 0.5,
    "valide": [

@@ -95,6 +95,19 @@ def test_le_modele_reproduit_la_mesure(mesure):
                 "cran %s : %.1f tr/min calcules contre %.1f lus"
                 % (cran, obtenu, attendu))
 
+    elif grandeur == "loi_impact":
+        from createsim.data.tables import Tables
+        tables = Tables.load()
+        par_voile = tables.get("stress.impact")[mesure["bloc_type"]]
+        assert mesure["bloc_type"] in tables.get(
+            "stress.impact_scales_with_sails")
+        for point in mesure["points"]:
+            attendu = par_voile * point["voiles"] * point["rpm"]
+            assert attendu == pytest.approx(point["su"],
+                                            abs=mesure["tolerance"]), (
+                "%d voiles a %d tr/min : %.1f su calcules contre %d lus"
+                % (point["voiles"], point["rpm"], attendu, point["su"]))
+
     elif grandeur == "convention_poussee":
         from createsim.sim import forces as F
         sim = _simulation(mesure)
@@ -112,11 +125,29 @@ def test_le_modele_reproduit_la_mesure(mesure):
 
 
 def test_une_reserve_est_tenue_explicite(mesure):
-    """Une mesure a un seul point ne doit pas se faire passer pour une loi."""
-    if mesure["id"] == "cachalot-v4-helice-centrale-a-fond":
-        assert mesure.get("reserve"), "la loi par voile tient sur un seul point"
+    """Ce qui n'est pas tranche doit le dire, et cesser de le dire une fois
+    tranche — une reserve qui survit a sa levee est aussi trompeuse qu'une
+    reserve absente."""
     if mesure["grandeur"] == "convention_poussee":
         assert mesure.get("reserve"), "le sens absolu n'est pas encore tranche"
+    if mesure["id"] == "cachalot-v4-helice-centrale-a-fond":
+        assert not mesure.get("reserve"), (
+            "la loi par voile est departagee depuis la lecture a 12 voiles")
+
+
+def test_la_loi_par_voile_est_departagee_et_pas_seulement_compatible():
+    """Un impact constant de 32 su/tr passe le point a 16 voiles. Il faut donc
+    qu'un point l'exclue, sinon la loi n'est pas etablie, juste compatible."""
+    loi = next(m for m in ENTRIES if m["grandeur"] == "loi_impact")
+    voiles = {p["voiles"] for p in loi["points"]}
+    assert len(voiles) >= 2, "un seul rotor ne departage aucune loi en voiles"
+    regimes = {p["rpm"] for p in loi["points"]}
+    assert len(regimes) >= 2, "un seul regime ne departage aucune loi en regime"
+
+    constant = 32.0
+    exclu = [p for p in loi["points"]
+             if abs(constant * p["rpm"] - p["su"]) > loi["tolerance"]]
+    assert exclu, "aucun point n'exclut l'hypothese de l'impact constant"
 
 
 # --- ce que la mesure a change dans le modele -------------------------------
