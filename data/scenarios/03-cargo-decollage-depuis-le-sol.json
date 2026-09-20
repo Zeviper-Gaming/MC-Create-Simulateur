@@ -1,0 +1,29 @@
+{
+ "schema": 1,
+ "nom": "cargo — decollage depuis le sol",
+ "question": "Le vaisseau se pose-t-il, puis redecolle-t-il une fois rempli ?",
+ "vaisseau": "cargo_airship.nbt",
+ "ticks": 1200,
+ "echantillon": 5,
+ "situation": {
+  "altitude": 60.0,
+  "vitesse_initiale": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "sol_actif": true,
+  "sol_altitude": 10.0,
+  "sol_friction": 1.0,
+  "gaz_initial": "vide"
+ },
+ "reglages": {},
+ "commandes": [
+  {
+   "tick": 0,
+   "levier": "15,13,20",
+   "valeur": 9
+  }
+ ],
+ "notes": "Eprouve le plan de sol : a vide le vaisseau descend, se pose sans traverser, puis repart."
+}

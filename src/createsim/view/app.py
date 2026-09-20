@@ -19,6 +19,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..model.vehicle import VehicleModel
 from ..sim.forces import lift_centre, resultant, torque_about
+from ..sim.compare import compare
+from ..sim.scenario import Recorder, Scenario, default_library
 from ..sim.state import SimOptions
 from ..sim.tick import Simulation
 from ..sim.telemetry import Trace
@@ -114,6 +116,10 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.curves.reference_requested.connect(self._load_reference)
         self.curves.replay_requested.connect(self._load_replay)
         self.curves.replay_seek.connect(self._seek_replay)
+        self.curves.scenario_requested.connect(self._scenario_action)
+        # Enregistre les mouvements de commande pour en faire un scenario :
+        # une manoeuvre refaite a la main n'est jamais tout a fait la meme.
+        self.recorder = Recorder(self.sim)
 
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(TICK_MS)
@@ -184,6 +190,7 @@ class VehicleWindow(QtWidgets.QMainWindow):
 
     def _commands_changed(self) -> None:
         self.sim._solve(self.sim.state)
+        self.recorder.capture()
         self._refresh_scene()
 
     def _sim_action(self, action: str) -> None:
@@ -202,6 +209,7 @@ class VehicleWindow(QtWidgets.QMainWindow):
             self.trace = Trace()
             self.trace.record(self.sim)
             self.curves.set_trace(self.trace)
+            self.recorder = Recorder(self.sim)
             self._refresh_scene()
         elif action == "static":
             # F2.7 : converger sans regarder le transitoire
@@ -273,6 +281,94 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(
             "reference : %d enregistrements superposes · %s"
             % (len(trace), self._base))
+
+    # -- scenarios (L4) -----------------------------------------------------
+    def _scenario_action(self, action: str) -> None:
+        if action == "save":
+            self._save_scenario()
+        elif action == "compare":
+            self._compare_scenario()
+        elif action == "load":
+            self._load_scenario()
+
+    def _scenario_dir(self) -> str:
+        try:
+            return str(default_library())
+        except FileNotFoundError:
+            return str(Path(self.model.structure.path or ".").parent)
+
+    def _save_scenario(self) -> None:
+        """Fige la session courante en scenario rejouable."""
+        name = Path(self.model.structure.path or "vaisseau").stem
+        path, _filter = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Enregistrer ce scenario",
+            str(Path(self._scenario_dir()) / ("%s.json" % name)),
+            "Scenario (*.json)")
+        if not path:
+            return
+        scenario = self.recorder.scenario(
+            Path(path).stem.replace("-", " "),
+            Path(self.model.structure.path or name).name)
+        scenario.save(path)
+        self.statusBar().showMessage(
+            "scenario enregistre : %d commandes sur %d ticks · %s"
+            % (len(scenario.commandes), scenario.ticks, Path(path).name))
+
+    def _pick_scenario(self, title: str) -> Scenario | None:
+        path, _filter = QtWidgets.QFileDialog.getOpenFileName(
+            self, title, self._scenario_dir(), "Scenario (*.json)")
+        if not path:
+            return None
+        try:
+            return Scenario.load(path)
+        except (OSError, ValueError, KeyError) as exc:
+            QtWidgets.QMessageBox.warning(self, "Scenario illisible", str(exc))
+            return None
+
+    def _compare_scenario(self) -> None:
+        """Superpose l'execution d'un scenario a la trace courante.
+
+        Le cahier tranche le multi-vaisseaux : un seul a la fois, et la
+        comparaison passe par la superposition de deux executions.
+        """
+        scenario = self._pick_scenario("Comparer a un scenario")
+        if scenario is None:
+            return
+        try:
+            other = scenario.run(self.model.tables)
+        except FileNotFoundError as exc:
+            QtWidgets.QMessageBox.warning(self, "Vaisseau introuvable", str(exc))
+            return
+        self.curves.set_reference(other)
+        result = compare(other, self.trace)
+        message = "comparaison a « %s » : %s" % (scenario.nom, result.verdict)
+        if result.bouges:
+            first = result.bouges[0]
+            message += " — %s %.2f → %.2f %s" % (first.nom, first.avant or 0.0,
+                                                 first.apres or 0.0, first.unite)
+        self.statusBar().showMessage(message)
+
+    def _load_scenario(self) -> None:
+        """Charge un scenario et l'execute sur le vaisseau courant."""
+        scenario = self._pick_scenario("Charger un scenario")
+        if scenario is None:
+            return
+        self.timer.stop()
+        self.panel.play.setChecked(False)
+        self._stop_replay()
+        self.sim.options = replace(scenario.options)
+        try:
+            self.trace = scenario.run(self.model.tables, sim=self.sim)
+        except FileNotFoundError as exc:
+            QtWidgets.QMessageBox.warning(self, "Vaisseau introuvable", str(exc))
+            return
+        self.curves.set_trace(self.trace)
+        self.recorder = Recorder(self.sim)
+        self.panel.refresh()
+        self._refresh_scene()
+        self.statusBar().showMessage(
+            "scenario « %s » joue : %d ticks, %d enregistrements"
+            % (scenario.nom, scenario.ticks, len(self.trace)))
 
     # -- rejeu --------------------------------------------------------------
     def _load_replay(self) -> None:

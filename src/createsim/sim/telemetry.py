@@ -23,7 +23,7 @@ BASE_COLUMNS = (
     "vitesse", "vitesse_horizontale", "vitesse_verticale",
     "pression", "masse", "poids", "portance", "poussee", "trainee",
     "resultante_y", "gaz_total", "gaz_capacite", "regime_max",
-    "stress_su", "capacite_su", "au_sol",
+    "stress_su", "capacite_su", "au_sol", "surcharge",
 )
 
 #: au-dela, on cesse d'enregistrer plutot que de grignoter la memoire sans fin.
@@ -62,8 +62,12 @@ class Trace:
             for i in range(3):
                 resultant[i] += f.vector[i]
 
+        # La DEMANDE, pas ce qui reste apres disjonction : une trace qui note
+        # zero SU au moment ou le reseau lache rend la panne introuvable.
         stress_su = capacity_su = 0.0
-        for net in sim.stress.budget(st.speeds, st.source_rpm):
+        for net in sim.stress.budget(st.speeds, st.source_rpm,
+                                     demand=st.demand_speeds,
+                                     overloaded=st.overloaded):
             stress_su += net["stress_su"]
             capacity_su += net["capacite_su"]
 
@@ -95,6 +99,7 @@ class Trace:
             "stress_su": round(stress_su, 1),
             "capacite_su": round(capacity_su, 1),
             "au_sol": int(st.on_ground),
+            "surcharge": int(bool(st.overloaded)),
         }
         for f in forces:
             for axis, value in zip(AXES, f.vector):

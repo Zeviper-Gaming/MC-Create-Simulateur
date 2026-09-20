@@ -151,6 +151,112 @@ def cmd_tables(args) -> int:
     return 0
 
 
+# --- scenarios et non-regression (L4) --------------------------------------
+def _scenarios(args) -> list:
+    from .sim.scenario import Scenario, library
+    if getattr(args, "noms", None):
+        out = []
+        for name in args.noms:
+            path = Path(name)
+            if path.is_file():
+                out.append(Scenario.load(path))
+                continue
+            found = [s for s in library(getattr(args, "bibliotheque", None))
+                     if name.lower() in s.nom.lower()]
+            if not found:
+                print("aucun scenario ne correspond a « %s »" % name,
+                      file=sys.stderr)
+                raise SystemExit(2)
+            out += found
+        return out
+    return library(getattr(args, "bibliotheque", None))
+
+
+def cmd_scenario(args) -> int:
+    from .sim.compare import compare
+    from .sim.scenario import Scenario, locate
+    from .sim.telemetry import Trace
+
+    if args.action == "list":
+        for s in _scenarios(args):
+            ship = locate(s.vaisseau)
+            state = "" if ship else "   (vaisseau hors depot)"
+            print("%-44s %5d ticks  %-24s%s"
+                  % (s.nom, s.ticks, s.vaisseau, state))
+            if s.question:
+                print("    %s" % s.question)
+        return 0
+
+    if args.action == "bless":
+        tables = Tables.load(getattr(args, "tables", None))
+        for s in _scenarios(args):
+            if locate(s.vaisseau) is None:
+                print("IGNORE %-40s vaisseau hors depot" % s.nom)
+                continue
+            path = s.reference_path(args.bibliotheque)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            s.run(tables).to_csv(str(path))
+            print("reference ecrite :", path.name)
+        return 0
+
+    if args.action == "run":
+        tables = Tables.load(getattr(args, "tables", None))
+        for s in _scenarios(args):
+            trace = s.run(tables)
+            last = trace.last() or {}
+            print("%-44s alt %8.2f  v %6.3f  SU max %7.0f  surcharge %d ticks"
+                  % (s.nom, last.get("y", 0.0), last.get("vitesse", 0.0),
+                     max(trace.column("stress_su") or [0]),
+                     sum(trace.column("surcharge") or [0])))
+            if args.csv:
+                print("  trace :", trace.to_csv(args.csv))
+        return 0
+
+    if args.action == "compare":
+        if len(args.noms) != 2:
+            print("compare attend deux arguments", file=sys.stderr)
+            return 2
+        tables = Tables.load(getattr(args, "tables", None))
+
+        def resolve(name):
+            path = Path(name)
+            if path.suffix.lower() == ".csv" and path.is_file():
+                return Trace.from_csv(str(path)), path.name
+            args.noms = [name]
+            scenario = _scenarios(args)[0]
+            return scenario.run(tables), scenario.nom
+
+        wanted = list(args.noms)
+        before, name_a = resolve(wanted[0])
+        after, name_b = resolve(wanted[1])
+        print("avant : %s" % name_a)
+        print("apres : %s" % name_b)
+        print()
+        print(compare(before, after).text())
+        return 0
+    return 2
+
+
+def cmd_nonregression(args) -> int:
+    from .validation import level4_nonregression
+    results = level4_nonregression(Tables.load(getattr(args, "tables", None)),
+                                   getattr(args, "bibliotheque", None))
+    if not results:
+        print("aucune trace de reference : lancer `createsim scenario bless`")
+        return 1
+    ok = True
+    for r in results:
+        flag = "OK  " if r["passe"] else "ECHEC"
+        print("%-5s %-44s %s" % (flag, r["nom"], r["detail"]))
+        for line in r.get("details") or []:
+            print("        " + line)
+        ok &= r["passe"]
+    print("---")
+    print("Non-regression : %s"
+          % ("rien n'a bouge" if ok else "DES GRANDEURS ONT BOUGE"))
+    return 0 if ok else 1
+
+
 # ---------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -195,6 +301,19 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--largeur", type=int, default=1280)
     w.add_argument("--hauteur", type=int, default=720)
     w.set_defaults(func=cmd_voir)
+
+    s = sub.add_parser("scenario", help="bibliotheque de scenarios (L4)")
+    s.add_argument("action", choices=("list", "run", "compare", "bless"))
+    s.add_argument("noms", nargs="*",
+                   help="noms de scenarios, chemins .json ou traces .csv")
+    s.add_argument("--bibliotheque", default=None)
+    s.add_argument("--csv", help="exporter la trace du dernier scenario joue")
+    s.set_defaults(func=cmd_scenario)
+
+    n = sub.add_parser("nonregression",
+                       help="rejouer la bibliotheque et dire ce qui a bouge")
+    n.add_argument("--bibliotheque", default=None)
+    n.set_defaults(func=cmd_nonregression)
 
     t = sub.add_parser("tables", help="inspecter ou mettre a jour les tables")
     t.add_argument("action", choices=("show", "import"))

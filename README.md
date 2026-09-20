@@ -262,8 +262,17 @@ pas une loi établie.
 
 Reste une réserve, tenue explicite : le sens absolu de la poussée sur cette coque.
 
-Le niveau 4 (bibliothèque de scénarios de non-régression) demande un corpus : il vient
-avec L4.
+### Niveau 4 — non-régression
+
+Cinq scénarios de référence, leurs traces figées dans le dépôt, rejoués à chaque
+modification des tables ou du solveur. Les trois premiers niveaux disent si le modèle est
+**juste** ; celui-ci dit s'il a **changé**, ce qui n'est pas la même question — une mise à
+jour de mod peut très bien laisser le modèle juste et rendre le vaisseau soudain incapable
+de décoller. Détail dans la section L4 plus bas.
+
+```bash
+createsim nonregression
+```
 
 ---
 
@@ -314,6 +323,83 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
+
+## L4 : comparer deux configurations, survivre à une mise à jour de mod
+
+Un scénario associe quatre choses, et il faut les quatre pour qu'une exécution soit
+reproductible : **le fichier**, **les réglages**, **la situation** et une séquence de
+commandes **horodatée**. C'est le quatrième point qui distingue un scénario d'un simple
+jeu de réglages — « brûleurs à fond » et « brûleurs à fond puis coupés à la seconde 30 »
+ne décrivent pas la même manœuvre.
+
+```bash
+createsim scenario list
+createsim scenario run "montee a vide" --csv trace.csv
+createsim scenario compare "montee a vide" "brûleurs coupes"
+createsim nonregression
+```
+
+Le format est du JSON lisible à la main, comme l'exige le cahier : un scénario se relit et
+se corrige dans un éditeur de texte, sans l'outil.
+
+```json
+"commandes": [
+ { "tick": 0,   "levier": "15,13,20", "valeur": 15 },
+ { "tick": 600, "levier": "15,13,20", "valeur": 0 }
+]
+```
+
+Dans la fenêtre, le bouton **scénario** fait trois choses : figer la session courante
+(les mouvements de manette sont enregistrés au fil de l'eau, seuls les **changements**
+étant consignés), rejouer un scénario sur le vaisseau courant, ou en superposer un second
+pour comparer. Le cahier tranche le multi-vaisseaux : un seul à la fois, la comparaison
+passe par la superposition de deux exécutions.
+
+### Ce qui a bougé, et à partir de quand
+
+La comparaison rend deux choses, parce qu'elles ne répondent pas à la même question.
+
+**L'ampleur** — douze indicateurs suivis d'une exécution à l'autre : altitude finale et
+max, temps de montée, vitesses, gaz, SU demandés, ticks en surcharge, ticks au sol.
+
+**L'instant** — le premier tick où les deux traces cessent de coïncider. C'est le plus
+utile des deux et le plus facile à oublier : un écart de 3 % sur l'altitude finale ne dit
+pas s'il naît au départ ou s'il dérive sur toute la montée ; le tick où les courbes se
+séparent, si.
+
+### La non-régression
+
+Cinq scénarios de référence, leurs traces figées en CSV dans le dépôt, rejoués par
+`createsim nonregression`. Simulons une version d'Aeronautics où la poussée d'air chaud
+gagne **3 %** :
+
+```
+ECHEC cargo — montee a vide          rupture — separation au tick 5 (0.25 s) sur « y »
+         altitude finale       156.257 ->  163.610  m     +4.71 %
+         altitude max          158.948 ->  167.107  m     +5.13 %
+         montee                 21.750 ->   21.250  s     -2.30 %
+OK    cachalot — moulin et helices en charge      identique
+```
+
+Trois pour cent sur une constante déplacent l'altitude d'équilibre de près de cinq —
+et le cachalot, lui, n'en dépend pas du tout. C'est exactement ce qu'on veut savoir avant
+de reconstruire un vaisseau.
+
+Un scénario dont le vaisseau n'est pas dans le dépôt, ou qui n'a pas encore de trace de
+référence, est **ignoré et non compté en échec** : confondre les deux ferait crier au loup
+à chaque ajout. Et le test qui compte vraiment n'est pas celui qui vérifie que la
+non-régression passe — c'est celui qui vérifie qu'elle **détecte** un changement. Une
+non-régression qui passe toujours ne protège de rien, et c'est le mode de défaillance
+naturel de ce genre d'outil.
+
+### Un défaut trouvé en route
+
+Le sol était figé à la construction de la `Simulation`. Charger un scénario avec un plan
+de sol sur une session qui n'en avait pas donnait une chute sans fin — le bandeau
+reconstruisait le sol de son côté, la voie scénario l'ignorait. Un seul endroit le
+construit désormais, et `reset()` l'y rappelle.
+
+---
 
 ## L3 : chercher une panne et mesurer une amélioration
 

@@ -200,6 +200,7 @@ class CurvePanel(QtWidgets.QWidget):
     export_requested = QtCore.Signal()
     replay_requested = QtCore.Signal()
     replay_seek = QtCore.Signal(int)
+    scenario_requested = QtCore.Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -248,6 +249,23 @@ class CurvePanel(QtWidgets.QWidget):
         replay.setToolTip("relire une trace enregistree, tick par tick")
         replay.clicked.connect(self.replay_requested.emit)
         row.addWidget(replay)
+
+        # Scenarios (L4) : la comparaison passe par la superposition de deux
+        # executions, pas par deux vaisseaux dans la meme scene.
+        scenario = QtWidgets.QToolButton()
+        scenario.setText("scenario ▾")
+        scenario.setToolTip("enregistrer cette session, ou en rejouer une "
+                            "autre par-dessus pour comparer")
+        menu = QtWidgets.QMenu(scenario)
+        for label, key in (("Enregistrer cette session…", "save"),
+                           ("Comparer a un scenario…", "compare"),
+                           ("Charger un scenario…", "load")):
+            menu.addAction(label, lambda k=key: self.scenario_requested.emit(k))
+        scenario.setMenu(menu)
+        scenario.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        row.addWidget(scenario)
+        self.scenario_button = scenario
 
         # barre de rejeu, cachee tant qu'aucune trace n'est relue
         self.replay_bar = QtWidgets.QWidget()

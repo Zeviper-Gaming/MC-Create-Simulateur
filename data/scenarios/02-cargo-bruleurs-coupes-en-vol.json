@@ -1,0 +1,34 @@
+{
+ "schema": 1,
+ "nom": "cargo — brûleurs coupes en pleine montee",
+ "question": "Que se passe-t-il si je coupe le gaz a mi-montee ?",
+ "vaisseau": "cargo_airship.nbt",
+ "ticks": 1600,
+ "echantillon": 5,
+ "situation": {
+  "altitude": 63.0,
+  "vitesse_initiale": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "sol_actif": true,
+  "sol_altitude": 0.0,
+  "sol_friction": 1.0,
+  "gaz_initial": "vide"
+ },
+ "reglages": {},
+ "commandes": [
+  {
+   "tick": 0,
+   "levier": "15,13,20",
+   "valeur": 15
+  },
+  {
+   "tick": 600,
+   "levier": "15,13,20",
+   "valeur": 0
+  }
+ ],
+ "notes": "Le scenario qui justifie des commandes HORODATEES : le meme jeu de reglages sans la date ne decrit pas cette manoeuvre. Le sol est actif pour que la chute se termine quelque part."
+}

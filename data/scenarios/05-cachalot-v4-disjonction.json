@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "nom": "cachalot v4 — le cran de trop",
+ "question": "A partir de quel cran le reseau du moulin lache-t-il ?",
+ "vaisseau": "cachalot_volant_v4.nbt",
+ "ticks": 1200,
+ "echantillon": 5,
+ "situation": {
+  "altitude": 63.0,
+  "vitesse_initiale": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "sol_actif": true,
+  "sol_altitude": 0.0,
+  "sol_friction": 1.0,
+  "gaz_initial": "nbt"
+ },
+ "reglages": {},
+ "commandes": [
+  {
+   "tick": 0,
+   "levier": "57,11,11",
+   "valeur": 15
+  },
+  {
+   "tick": 0,
+   "levier": "57,11,13",
+   "valeur": 15
+  },
+  {
+   "tick": 0,
+   "levier": "59,11,10",
+   "valeur": 15
+  },
+  {
+   "tick": 200,
+   "levier": "57,11,11",
+   "valeur": 9
+  },
+  {
+   "tick": 200,
+   "levier": "57,11,13",
+   "valeur": 9
+  },
+  {
+   "tick": 200,
+   "levier": "59,11,10",
+   "valeur": 9
+  },
+  {
+   "tick": 600,
+   "levier": "57,11,11",
+   "valeur": 8
+  },
+  {
+   "tick": 600,
+   "levier": "57,11,13",
+   "valeur": 8
+  },
+  {
+   "tick": 600,
+   "levier": "59,11,10",
+   "valeur": 8
+  }
+ ],
+ "notes": "9 puis 8 : 7680 su sur 8192, puis 8960 et le reseau disjoncte. Ce vaisseau n'est pas dans le depot ; le scenario est ignore quand il est absent, comme le c1_air_cruiser des tests."
+}

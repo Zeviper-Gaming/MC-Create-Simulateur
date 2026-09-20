@@ -1,0 +1,29 @@
+{
+ "schema": 1,
+ "nom": "cargo — montee a vide",
+ "question": "Est-ce que ca decolle, et a quelle altitude ca se stabilise ?",
+ "vaisseau": "cargo_airship.nbt",
+ "ticks": 1200,
+ "echantillon": 5,
+ "situation": {
+  "altitude": 63.0,
+  "vitesse_initiale": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "sol_actif": false,
+  "sol_altitude": 0.0,
+  "sol_friction": 1.0,
+  "gaz_initial": "vide"
+ },
+ "reglages": {},
+ "commandes": [
+  {
+   "tick": 0,
+   "levier": "15,13,20",
+   "valeur": 9
+  }
+ ],
+ "notes": "Le scenario de base. Il eprouve la dynamique du gaz, la trainee et la convergence vers l'altitude d'equilibre — les trois choses qu'une mise a jour de constantes deplace en premier."
+}

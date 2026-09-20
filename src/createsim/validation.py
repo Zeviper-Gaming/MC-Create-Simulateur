@@ -15,8 +15,15 @@ du noyau.
      niveau dit si les EQUATIONS sont les bonnes, et le cahier en fait la
      condition de livrabilite de L2.
 
-Le niveau 4 (non-regression sur une bibliotheque de scenarios) demande un
-corpus : il n'est pas ici.
+  4. Non-regression — la bibliotheque de scenarios de reference, rejouee
+     apres chaque mise a jour des tables ou du solveur, avec comparaison
+     automatique des traces. C'est ce qui permet de suivre un mod en alpha
+     sans redouter chaque version.
+
+Les trois premiers disent si le modele est juste. Le quatrieme dit s'il a
+CHANGE, ce qui n'est pas la meme question : une mise a jour de mod peut tres
+bien rendre le modele toujours juste et le vaisseau soudain incapable de
+decoller.
 """
 from __future__ import annotations
 
@@ -237,6 +244,55 @@ def level3_measurements(tables: Tables, fixtures=None) -> list[dict]:
     return out
 
 
+def level4_nonregression(tables: Tables | None = None,
+                         directory=None) -> list[dict]:
+    """Rejouer la bibliotheque de scenarios et dire CE QUI A BOUGE.
+
+    C'est ce qui permet de suivre un mod en alpha sans redouter chaque
+    version : apres une mise a jour des tables, on ne se demande plus si le
+    comportement a change, on lit lesquelles des grandeurs ont bouge et a
+    partir de quel tick.
+
+    Un scenario sans trace de reference n'est pas un echec — c'est un scenario
+    qu'on n'a pas encore beni. Le confondre avec une regression ferait crier au
+    loup a chaque ajout.
+    """
+    from .sim.compare import compare
+    from .sim.scenario import default_library, library, locate
+    from .sim.telemetry import Trace
+
+    tables = tables or Tables.load()
+    base = Path(directory) if directory else default_library()
+    out: list[dict] = []
+    for scenario in library(base):
+        reference = scenario.reference_path(base)
+        if locate(scenario.vaisseau) is None:
+            out.append({"nom": "niveau 4 - %s" % scenario.nom, "passe": True,
+                        "detail": "IGNORE : %s hors depot" % scenario.vaisseau,
+                        "mesure": {}})
+            continue
+        if not reference.is_file():
+            out.append({"nom": "niveau 4 - %s" % scenario.nom, "passe": True,
+                        "detail": "pas de reference — `scenario bless` d'abord",
+                        "mesure": {}})
+            continue
+        result = compare(Trace.from_csv(str(reference)), scenario.run(tables))
+        detail = result.verdict
+        if result.divergence_tick is not None:
+            detail += (" — separation au tick %d (%.2f s) sur « %s »"
+                       % (result.divergence_tick,
+                          result.divergence_seconde or 0.0,
+                          result.divergence_colonne))
+        out.append({
+            "nom": "niveau 4 - %s" % scenario.nom,
+            "passe": result.identique,
+            "detail": detail,
+            "details": [d.line() for d in result.bouges],
+            "mesure": result.report(),
+        })
+    return out
+
+
 def run_validation(tables: Tables | None = None, fixtures=None) -> list[dict]:
     tables = tables or Tables.load()
     results: list[dict] = []
@@ -244,4 +300,5 @@ def run_validation(tables: Tables | None = None, fixtures=None) -> list[dict]:
     results += level2_analytic(tables, fixtures)
     results += level2b_balloon_transient(tables, fixtures)
     results += level3_measurements(tables, fixtures)
+    results += level4_nonregression(tables)
     return results

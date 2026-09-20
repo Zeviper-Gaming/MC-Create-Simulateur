@@ -26,11 +26,21 @@ class Simulation:
         self.tables = model.tables
         self.options = options or SimOptions()
         self.curve = PressureCurve.from_tables(self.tables)
+        self.ground = NoGround()
+        self.rebuild_ground()
+        self.state = SimState()
+        self.reset()
+
+    def rebuild_ground(self) -> None:
+        """Refait le sol d'apres les options.
+
+        Changer `options` ne suffisait pas : le sol etait fige a la
+        construction, et charger un scenario avec un sol sur une session sans
+        sol donnait une chute sans fin. Un seul endroit le construit desormais.
+        """
         self.ground = (FlatGround(self.options.ground_altitude,
                                   self.options.ground_friction, True)
                        if self.options.ground_enabled else NoGround())
-        self.state = SimState()
-        self.reset()
 
     # -- raccourcis vers les organes --------------------------------------
     @property
@@ -68,6 +78,7 @@ class Simulation:
     # -- remise a zero -----------------------------------------------------
     def reset(self) -> None:
         """Jette l'etat, garde le modele. Instantane, sans relire le fichier."""
+        self.rebuild_ground()
         opt = self.options
         st = SimState()
         st.position = [0.0, float(opt.altitude), 0.0]

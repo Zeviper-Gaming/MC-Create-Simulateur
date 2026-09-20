@@ -515,14 +515,11 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.situation_changed.emit()
 
     def _ground_changed(self, *_args) -> None:
-        from ..sim.atmosphere import FlatGround, NoGround
         options = self.sim.options
         options.ground_enabled = self.ground.isChecked()
         options.ground_altitude = self.ground_y.value()
         options.ground_friction = self.friction.value()
-        self.sim.ground = (FlatGround(options.ground_altitude,
-                                      options.ground_friction, True)
-                           if options.ground_enabled else NoGround())
+        self.sim.rebuild_ground()
         self.situation_changed.emit()
 
     def _expert_changed(self, on: bool) -> None:

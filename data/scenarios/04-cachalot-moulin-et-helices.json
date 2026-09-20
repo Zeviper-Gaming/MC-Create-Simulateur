@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "nom": "cachalot — moulin et helices en charge",
+ "question": "Le moulin tient-il quand les trois helices montent en regime ?",
+ "vaisseau": "cachalot_volant_v3.nbt",
+ "ticks": 1200,
+ "echantillon": 5,
+ "situation": {
+  "altitude": 63.0,
+  "vitesse_initiale": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "sol_actif": true,
+  "sol_altitude": 0.0,
+  "sol_friction": 1.0,
+  "gaz_initial": "nbt"
+ },
+ "reglages": {},
+ "commandes": [
+  {
+   "tick": 0,
+   "levier": "58,11,11",
+   "valeur": 15
+  },
+  {
+   "tick": 0,
+   "levier": "58,11,13",
+   "valeur": 15
+  },
+  {
+   "tick": 0,
+   "levier": "60,11,10",
+   "valeur": 15
+  },
+  {
+   "tick": 200,
+   "levier": "58,11,11",
+   "valeur": 9
+  },
+  {
+   "tick": 200,
+   "levier": "58,11,13",
+   "valeur": 9
+  },
+  {
+   "tick": 200,
+   "levier": "60,11,10",
+   "valeur": 9
+  },
+  {
+   "tick": 600,
+   "levier": "58,11,11",
+   "valeur": 0
+  },
+  {
+   "tick": 600,
+   "levier": "58,11,13",
+   "valeur": 0
+  },
+  {
+   "tick": 600,
+   "levier": "60,11,10",
+   "valeur": 0
+  }
+ ],
+ "notes": "Eprouve la chaine cinetique complete : voiles du moulin, escalier des transmissions, bilan SU. Les trois paliers d'helice de ce fichier ont un rotor ASSEMBLE : leur impact est un plancher, et le scenario existe aussi pour que cette limite reste visible."
+}
