@@ -98,6 +98,18 @@ def cmd_validate(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_voir(args) -> int:
+    try:
+        from .view.app import run
+    except ImportError as exc:
+        print("PySide6 est requis pour la vue 3D : pip install PySide6",
+              file=sys.stderr)
+        print("(%s)" % exc, file=sys.stderr)
+        return 3
+    return run(args.fichier, Tables.load(getattr(args, "tables", None)),
+               args.bench, args.largeur, args.hauteur)
+
+
 def cmd_tables(args) -> int:
     from .data import importers
     tables = Tables.load(getattr(args, "tables", None))
@@ -170,6 +182,14 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("validate", help="niveaux 1 et 2 de validation")
     v.add_argument("--fixtures", default=None)
     v.set_defaults(func=cmd_validate)
+
+    w = sub.add_parser("voir", help="fenetre 3D des blocs (spike)")
+    w.add_argument("fichier")
+    w.add_argument("--bench", type=float, default=0.0,
+                   metavar="SECONDES", help="mesurer la cadence puis sortir")
+    w.add_argument("--largeur", type=int, default=1280)
+    w.add_argument("--hauteur", type=int, default=720)
+    w.set_defaults(func=cmd_voir)
 
     t = sub.add_parser("tables", help="inspecter ou mettre a jour les tables")
     t.add_argument("action", choices=("show", "import"))

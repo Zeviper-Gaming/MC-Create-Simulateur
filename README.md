@@ -10,7 +10,9 @@ responsable**. En jeu, on voit le résultat et jamais la décomposition.
 
 > **État : lot L0 livré** — le noyau physique, sans interface, en ligne de commande.
 > Les deux niveaux de validation automatiques passent, ce qui est le critère de
-> livrabilité du lot. L'interface 3D (L1) et le bandeau de contrôle (L2) suivront.
+> livrabilité du lot. Le widget 3D de L1 est éprouvé séparément (voir plus bas) :
+> le risque technique n°1 du projet est levé. Restent à écrire l'affichage des
+> forces (L1) et le bandeau de contrôle (L2).
 
 ---
 
@@ -51,6 +53,15 @@ createsim validate
 createsim tables show --filtre hot_air
 createsim tables import ".../config/create-server.toml" --appliquer
 ```
+
+```bash
+pip install PySide6
+createsim voir mon_vaisseau.nbt
+```
+
+Fenêtre 3D des blocs, colorés par famille. Clic gauche pour orbiter, molette pour
+zoomer, clic droit pour translater, touches `1`–`4` et `0` pour les vues normalisées.
+`--bench 5` mesure la cadence pendant cinq secondes puis sort.
 
 ## Ce que le logiciel ne fait pas
 
@@ -185,6 +196,36 @@ scénarios de non-régression) demandent une mesure humaine ou un corpus : ils v
 avec L2 et L4.
 
 ---
+
+## Le risque 3D est levé
+
+Le cahier désignait un risque principal : *« la 3D peut coûter cher. Un rendu naïf de
+20 000 cubes s'écroule. »* Il prescrivait d'en faire d'abord un module autonome,
+« testable avant que le reste de l'interface existe ». C'est fait, et le risque
+n'existe plus.
+
+| Mesure | `c1_air_cruiser` (20 659 blocs) |
+|---|---|
+| Faces totales d'un rendu naïf | 123 954 |
+| Faces visibles après suppression des internes | **31 030** (−75 %) |
+| Quadrilatères après fusion gloutonne | **10 376** (−67 %) |
+| Triangles envoyés au GPU | **20 752** — 8 % d'un cube par bloc |
+| Mémoire GPU | **2,1 Mo** |
+| Construction du maillage | **0,76 s**, une fois au chargement |
+| Cadence à 1280×720 | **2 453 images/s** — NF2 en demande 60 |
+
+Trois choses rendent ce résultat possible, et aucune n'est un raffinement tardif.
+Les **faces internes n'existent pas** : une face n'est émise que si le voisin dans sa
+direction est vide. Les **faces coplanaires de même famille fusionnent** en rectangles
+maximaux. Et tout part en **un seul tampon, dessiné en un seul appel**.
+
+Le maillage vit dans `view/mesh.py`, qui ne connaît ni Qt ni OpenGL et se teste sans
+fenêtre — c'est ce qui a permis de mesurer le poste coûteux avant d'écrire la moindre
+ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
+
+> **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
+> lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
+> trois systèmes visés ; elle n'est mesurée que sous Windows.
 
 ## Ce qui manquait au solveur cinétique
 
