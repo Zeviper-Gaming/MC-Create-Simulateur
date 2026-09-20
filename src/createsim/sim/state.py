@@ -54,6 +54,9 @@ class SimState:
     forces: list = field(default_factory=list)
     pressure: float = 1.0
     overloaded: set = field(default_factory=set)
+    #: regimes AVANT l'arret pour surcharge : sans eux, un reseau qui disjoncte
+    #: se lit « 0 SU demandes, pas de surcharge » et rien n'explique l'arret.
+    demand_speeds: dict = field(default_factory=dict)
     conflicts: list = field(default_factory=list)
 
     @property

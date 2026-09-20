@@ -35,7 +35,8 @@ CHAIN_DRIVES = frozenset(("create:encased_chain_drive",))
 
 # Un embrayage alimente coupe la transmission.
 # Un aiguillage alimente inverse le sens : non modelise, il ne change que le
-# signe, et ce signe est deja marque « a confirmer en jeu » pour la poussee.
+# signe de la poussee, dont la convention a ete confrontee au jeu
+# (`data/mesures/jeu.json`).
 CLUTCHES = frozenset(("create:clutch",))
 SMALL_COGS = frozenset(("create:cogwheel", "create:andesite_encased_cogwheel",
                         "create:brass_encased_cogwheel"))

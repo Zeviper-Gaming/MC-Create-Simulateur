@@ -95,6 +95,11 @@ def cmd_validate(args) -> int:
     print("---")
     print("Le lot L0 n'est livrable que si les niveaux 1 et 2 passent : %s"
           % ("ils passent" if ok else "ILS NE PASSENT PAS"))
+    jeu = [r for r in results if r["nom"].startswith("niveau 3")
+           and "IGNORE" not in r["detail"]]
+    print("Le lot L2 n'est livrable que si une grandeur a ete confrontee au "
+          "jeu : %s" % ("%d lectures concordent" % len(jeu) if jeu
+                        else "AUCUNE MESURE REJOUEE"))
     return 0 if ok else 1
 
 

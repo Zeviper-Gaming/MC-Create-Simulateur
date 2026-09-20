@@ -10,8 +10,13 @@ du noyau.
   2. Coherence analytique — la trainee etant lineaire, la vitesse a une solution
      exacte ; l'integrateur doit y coller a mieux de 1 %.
 
-Les niveaux 3 (confrontation au jeu) et 4 (non-regression sur une bibliotheque
-de scenarios) demandent une mesure humaine ou un corpus : ils ne sont pas ici.
+  3. Confrontation au jeu — les lectures faites a la main sur un vaisseau pose,
+     consignees dans `data/mesures/jeu.json`, rejouees par le modele. Seul ce
+     niveau dit si les EQUATIONS sont les bonnes, et le cahier en fait la
+     condition de livrabilite de L2.
+
+Le niveau 4 (non-regression sur une bibliotheque de scenarios) demande un
+corpus : il n'est pas ici.
 """
 from __future__ import annotations
 
@@ -170,10 +175,73 @@ def level2b_balloon_transient(tables: Tables, fixtures=None) -> list[dict]:
     return out
 
 
+#: la ou chercher un vaisseau nomme par une mesure : d'abord les fixtures du
+#: depot, puis l'instance de jeu. Un vaisseau absent fait ignorer sa mesure,
+#: jamais echouer la validation — c'est la regle deja suivie pour le cruiser.
+INSTANCE = Path(r"C:/Users/Florian/curseforge/minecraft/Instances"
+                r"/La Bonne Compagnie/schematics")
+
+
+def _locate(name: str, fixtures=None) -> Path | None:
+    directory = Path(fixtures) if fixtures else None
+    for candidate in (directory, default_fixtures(), INSTANCE):
+        if candidate is not None and (candidate / name).is_file():
+            return candidate / name
+    return None
+
+
+def level3_measurements(tables: Tables, fixtures=None) -> list[dict]:
+    """Confrontation au jeu : les lectures faites a la main, rejouees.
+
+    Les niveaux 1 et 2 verifient que le noyau est d'accord avec lui-meme. Seul
+    celui-ci dit si les equations sont les bonnes. Le cahier en fait la
+    condition de livrabilite de L2.
+    """
+    import json
+    from pathlib import Path
+
+    from .model.vehicle import VehicleModel
+    from .sim.state import SimOptions
+    from .sim.tick import Simulation
+
+    path = Path(__file__).resolve().parents[2] / "data" / "mesures" / "jeu.json"
+    if not path.is_file():
+        return []
+    out: list[dict] = []
+    for entry in json.loads(path.read_text(encoding="utf-8"))["mesures"]:
+        if entry["grandeur"] not in ("capacite_su", "stress_su"):
+            continue
+        ship = _locate(entry["vaisseau"], fixtures)
+        if ship is None:
+            out.append({
+                "nom": "niveau 3 - %s" % entry["id"],
+                "passe": True,
+                "detail": "IGNORE : %s hors depot" % entry["vaisseau"],
+                "mesure": {},
+            })
+            continue
+        sim = Simulation(VehicleModel.load(str(ship), tables), SimOptions())
+        for lever, value in (entry.get("commandes") or {}).items():
+            sim.set_command(tuple(int(v) for v in lever.split(",")), int(value))
+        sim._solve(sim.state)
+        rows = [r for r in sim.report()["stress"] if r["reseau"] == entry["reseau"]]
+        got = rows[0][entry["grandeur"]] if rows else float("nan")
+        expected, tol = entry["attendu"], entry["tolerance"]
+        out.append({
+            "nom": "niveau 3 - %s" % entry["id"],
+            "passe": abs(got - expected) <= tol,
+            "detail": ("%.1f su calcules contre %.1f su lus au %s"
+                       % (got, expected, entry["instrument"].split(",")[0])),
+            "mesure": {"calcule": got, "jeu": expected},
+        })
+    return out
+
+
 def run_validation(tables: Tables | None = None, fixtures=None) -> list[dict]:
     tables = tables or Tables.load()
     results: list[dict] = []
     results += level1_concordance(tables, fixtures)
     results += level2_analytic(tables, fixtures)
     results += level2b_balloon_transient(tables, fixtures)
+    results += level3_measurements(tables, fixtures)
     return results

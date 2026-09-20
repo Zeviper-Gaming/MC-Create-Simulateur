@@ -138,8 +138,10 @@ def levitite_force(organ, total_mass: float, tables) -> Force | None:
 def propeller_forces(bearings, speeds: dict[Pos, float], tables) -> list[Force]:
     """Poussee = voiles^1,5 x RPM x 0,2, appliquee au palier, selon son axe.
 
-    Le sens suit l'orientation du palier et le signe du regime. C'est une
-    convention : seule une mesure en jeu peut la trancher definitivement.
+    Le sens suit l'orientation du palier et le signe du regime. Mesure en jeu
+    (`data/mesures/jeu.json`) : les helices poussent bien le vaisseau vers
+    l'avant, la convention n'est donc pas a renverser. Reste a lever sur quelle
+    extremite de coque « l'avant » tombe pour le cachalot.
     """
     coef = tables.get("forces.propeller_bearing_thrust")
     exponent = tables.get("forces.propeller_sail_exponent")

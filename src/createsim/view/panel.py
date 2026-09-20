@@ -200,14 +200,18 @@ class LeverRow(QtWidgets.QFrame):
     def _describe(self, signal: int) -> None:
         cibles = len(self.lever.targets)
         text = "commande %d organe(s)" % cibles if cibles else "ne commande rien"
-        if self.lever.inverted:
-            # Le piege que le cahier demande de lever : sur une manette
-            # inversee, l'angle vu en jeu n'est PAS le signal emis.
+        # Le piege que le cahier demande de lever, et qu'une mesure en jeu a
+        # deplace : ce n'est pas le levier qui ment sur son cran, c'est son
+        # DESTINATAIRE qui lit l'echelle a l'envers. Deux manettes voisines sur
+        # la meme console ne vont pas dans le meme sens.
+        note = self.lever.ENDS.get(self.lever.scale or "")
+        if self.lever.scale in ("inverse", "mixte"):
             self.detail.setStyleSheet(TRAP)
-            text = ("angle en jeu %d · signal emis %d — inversee · %s"
-                    % (self.lever.displayed_angle(signal), signal, text))
+            text = "cran %d · %s · %s" % (signal, note, text)
         else:
             self.detail.setStyleSheet(MUTED)
+            if note:
+                text = "cran %d · %s · %s" % (signal, note, text)
         self.detail.setText(text)
 
     def mousePressEvent(self, event) -> None:

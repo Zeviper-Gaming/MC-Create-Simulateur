@@ -1,0 +1,117 @@
+{
+ "schema": 1,
+ "titre": "Mesures relevees en jeu — niveau 3 de validation du cahier",
+ "note": [
+  "Ce fichier est la seule source du depot qui ne vienne pas du code d'un mod",
+  "ni d'un fichier de configuration : ce sont des lectures faites en jeu, a la",
+  "main, sur un vaisseau pose. Le cahier en fait la condition de livrabilite du",
+  "lot L2 — « une seule lecture valide toute la chaine depuis les voiles",
+  "jusqu'au bilan de couple ».",
+  "Chaque entree est rejouee par tests/test_mesures_jeu.py. Une mesure qui",
+  "cesse de concorder est une regression, pas une tolerance a elargir."
+ ],
+ "protocole": [
+  "Vaisseau pose en blocs, PAS assemble en contraption volante.",
+  "Palier de moulin assemble et libre de tourner (le fichier le porte a l'arret).",
+  "Lecture aux lunettes d'ingenieur sur les jauges deja presentes a bord."
+ ],
+ "mesures": [
+  {
+   "id": "cachalot-v4-moulin-capacite",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "Stressometer, arbre vertical sous le moulin",
+   "commandes": {},
+   "grandeur": "capacite_su",
+   "reseau": 0,
+   "attendu": 8192.0,
+   "tolerance": 0.5,
+   "valide": [
+    "comptage des voiles du rotor (>= 128, plafond du moulin atteint)",
+    "plafond de 16 tr/min de WindmillBearingBlockEntity.getGeneratedSpeed()",
+    "capacite de 512 su par tour du palier de moulin",
+    "agregation capacite = somme(source.capacite x |regime|) de KineticNetwork"
+   ]
+  },
+  {
+   "id": "cachalot-v4-reseau-a-vide",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "Stressometer, meme jauge",
+   "commandes": {},
+   "grandeur": "stress_su",
+   "reseau": 0,
+   "attendu": 0.0,
+   "tolerance": 0.5,
+   "valide": [
+    "les 4 transmissions analogiques ne consomment rien",
+    "arbres, boites et jauges ne consomment rien",
+    "les 3 manettes moteur sont bien au cran 15, donc a l'arret"
+   ]
+  },
+  {
+   "id": "cachalot-v4-helice-centrale-a-fond",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "Stressometer, meme jauge",
+   "commandes": {"59,11,10": 0},
+   "grandeur": "stress_su",
+   "reseau": 0,
+   "attendu": 8192.0,
+   "tolerance": 0.5,
+   "valide": [
+    "l'impact d'un palier d'helice se compte PAR VOILE : 2,0 su/tr x 16 voiles",
+    "soit 32 su/tr, et 8192 su a 256 tr/min"
+   ],
+   "reserve": [
+    "Un seul point de mesure. La loi lineaire est le choix le plus proche du",
+    "moulin, mais elle n'est pas departagee d'un impact constant de 32 su/tr :",
+    "une helice de 12 voiles a fond donnerait 6144 su si la loi est lineaire,",
+    "8192 su si elle est constante."
+   ]
+  },
+  {
+   "id": "cachalot-v4-echelle-transmission",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "manette moteur, regime de l'helice",
+   "grandeur": "regime",
+   "bloc": "66,4,12",
+   "levier": "59,11,10",
+   "escalier": {
+    "15": 0.0, "14": 16.0, "13": 32.0, "12": 48.0, "11": 64.0, "10": 80.0,
+    "9": 96.0, "8": 112.0, "7": 128.0, "6": 144.0, "5": 160.0, "4": 176.0,
+    "3": 192.0, "2": 208.0, "1": 224.0, "0": 256.0
+   },
+   "tolerance": 0.5,
+   "valide": [
+    "le cran affiche par la manette EST le signal emis, `inverted` compris",
+    "cote reducteur de la transmission : rapport (15 - signal) / 16",
+    "decouplage a 15, et prise directe a 0 — d'ou le saut de 224 a 256"
+   ]
+  },
+  {
+   "id": "cachalot-v4-sens-de-poussee",
+   "date": "2026-09-20",
+   "observateur": "Florian",
+   "vaisseau": "cachalot_volant_v4.nbt",
+   "instrument": "observation du deplacement",
+   "grandeur": "convention_poussee",
+   "observation": "les helices poussent le vaisseau vers l'avant",
+   "valide": [
+    "la poussee suit l'axe du palier et le signe du regime, sans inversion"
+   ],
+   "reserve": [
+    "Reste a lever : sur cette coque les trois paliers regardent east, donc la",
+    "poussee modelisee va vers +x. Si la proue du cachalot est du cote -x, le",
+    "signe est a renverser. La question qui tranche : quand les moteurs",
+    "poussent, le vaisseau part-il VERS le bout ou sont les helices, ou dans",
+    "l'autre sens ?"
+   ]
+  }
+ ]
+}

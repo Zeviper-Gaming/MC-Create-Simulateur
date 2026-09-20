@@ -94,17 +94,26 @@ def test_un_levier_qui_ne_commande_rien_le_dit(panel):
     assert "ne commande rien" in orphelins[0].detail.text()
 
 
-def test_le_piege_du_levier_inverse_est_ecrit_en_toutes_lettres(panel):
-    """La confusion entre angle affiche et signal emis est exactement ce que
-    le cahier demande de lever."""
+def test_le_sens_de_chaque_manette_est_ecrit_en_toutes_lettres(panel):
+    """Le piege que le cahier demande de lever, tel que la mesure en jeu l'a
+    redefini : le cran affiche EST le signal, mais deux manettes voisines ne se
+    lisent pas dans le meme sens parce que leurs destinataires different."""
     widget, _sim = panel
-    inverses = [r for r in widget.findChildren(LeverRow) if r.lever.inverted]
-    assert inverses
-    row = inverses[0]
-    row.slider.setValue(15)
-    text = row.detail.text()
-    assert "angle en jeu 0" in text
-    assert "signal emis 15" in text
+    rows = [r for r in widget.findChildren(LeverRow) if r.lever.targets]
+    assert rows
+
+    moteurs = [r for r in rows if r.lever.scale == "inverse"]
+    if moteurs:
+        moteurs[0].slider.setValue(15)
+        text = moteurs[0].detail.text()
+        assert "cran 15" in text
+        assert "ARRET" in text, text
+
+    gaz = [r for r in rows if r.lever.scale == "direct"]
+    if gaz:
+        gaz[0].slider.setValue(15)
+        assert "plein gaz" in gaz[0].detail.text()
+    assert moteurs or gaz
 
 
 def test_le_decouplage_a_quinze_est_ecrit_en_toutes_lettres(qt_app, cachalot_model):

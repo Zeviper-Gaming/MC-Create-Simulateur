@@ -93,6 +93,7 @@ class Simulation:
         solution = solve_speeds(self.kin, st.signals)
         overloaded = self.stress.overloaded_networks(solution.speeds,
                                                      solution.source_rpm)
+        st.demand_speeds = solution.speeds if overloaded else {}
         if overloaded:
             # Un reseau en surcharge met ses consommateurs a l'arret (F2.6).
             solution = solve_speeds(self.kin, st.signals, stopped=overloaded)
@@ -198,7 +199,11 @@ class Simulation:
             "conflits": st.conflicts,
         }
 
-        rep["stress"] = self.stress.budget(speeds_for_report, st.source_rpm)
+        # Sur un reseau qui a disjoncte, on publie la DEMANDE : les regimes
+        # retenus sont nuls, et « 0 SU demandes » n'expliquerait pas l'arret.
+        rep["stress"] = self.stress.budget(speeds_for_report, st.source_rpm,
+                                           demand=st.demand_speeds,
+                                           overloaded=st.overloaded)
         rep["surcharge"] = any(r["surcharge"] for r in rep["stress"])
         rep["redstone"] = self.redstone.concordance()
         names = self.model.names
@@ -310,7 +315,9 @@ class Simulation:
                 out.append({
                     "code": "F5.4", "gravite": "grave",
                     "titre": "reseau cinetique en surcharge",
-                    "detail": ("%.0f SU demandes pour %.0f SU disponibles"
+                    "detail": ("%.0f SU demandes pour %.0f SU disponibles : "
+                               "le reseau disjoncte et TOUS ses consommateurs "
+                               "s'arretent, pas seulement celui de trop"
                                % (r["stress_su"], r["capacite_su"])),
                     "blocs": [c["pos"] for c in r["consommateurs"][:8]],
                 })
@@ -345,6 +352,17 @@ class Simulation:
                            "le ratio portance/poids porte cette incertitude"
                            % self.mass.unknown_total),
                 "blocs": [],
+            })
+        for pos in sorted(set(self.stress.unknown_rotors)):
+            out.append({
+                "code": "F5.9", "gravite": "limite du modele",
+                "titre": "impact d'helice sous-estime",
+                "organe": names.describe("helice", pos, "helice %s" % list(pos)),
+                "detail": ("rotor assemble : ses voiles ne sont plus dans le "
+                           "fichier, et l'impact d'un palier se compte PAR "
+                           "VOILE. Le SU affiche pour ce reseau est un "
+                           "PLANCHER, pas une estimation."),
+                "blocs": [list(pos)],
             })
         for b in self.bearings.bearings:
             if not b.reliable and not b.contacts:

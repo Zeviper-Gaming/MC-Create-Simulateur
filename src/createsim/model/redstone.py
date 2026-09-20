@@ -4,10 +4,20 @@ En jeu, cette topologie est invisible. C'est elle qui repond a « qu'est-ce que
 fait ce levier ? » et qui permet de mettre en surbrillance les destinataires
 d'une commande (F4.3).
 
-Le piege `inverted` du Throttle Lever est traite ici. `ThrottleLeverBlock
-.getSignal()` renvoie `state` directement ; la propriete `inverted` n'affecte
-QUE l'angle affiche (`15 - state`). Consequence : manette visuellement au neutre
-sur un levier inverse, c'est `State = 15`, donc transmission DECOUPLEE.
+Le sens de lecture d'une manette est traite ici, et il a ete MESURE EN JEU
+(`data/mesures/jeu.json`, cachalot_volant_v4) : le cran affiche par le levier
+est le signal emis, y compris sur un `throttle_lever` porte `inverted`.
+
+Le piege est ailleurs, et il est reel : deux manettes cote a cote sur la meme
+console ne se lisent pas dans le meme sens, parce que leurs DESTINATAIRES ne
+les lisent pas dans le meme sens.
+
+    vers un bruleur              0 = eteint       15 = plein gaz
+    vers une transmission analog 0 = plein regime 15 = ARRET (decouple)
+
+C'est la transmission qui renverse l'echelle, pas le levier : son cote
+reducteur coupe a 15 et passe en prise directe a 0. Une manette moteur poussee
+a fond vers 15 arrete l'helice.
 """
 from __future__ import annotations
 
@@ -60,7 +70,8 @@ def attachment(pos: Pos, name: str, props: dict) -> Pos | None:
 class Lever:
     """Une commande de bord, telle qu'elle existe dans la structure."""
 
-    __slots__ = ("pos", "block", "initial", "inverted", "targets", "attach")
+    __slots__ = ("pos", "block", "initial", "inverted", "targets", "attach",
+                 "kinds")
 
     def __init__(self, pos: Pos, block: str, initial: int, inverted: bool,
                  attach: Pos | None = None):
@@ -70,19 +81,48 @@ class Lever:
         self.inverted = inverted
         self.attach = attach
         self.targets: set[Pos] = set()
+        self.kinds: set[str] = set()
 
     def displayed_angle(self, signal: int) -> int:
-        """L'angle que montre le jeu — different du signal si `inverted`."""
-        return 15 - signal if self.inverted else signal
+        """Le cran que montre le jeu. Mesure : c'est le signal, tel quel.
+
+        `inverted` est bien dans le blockstate, mais il ne decale pas la
+        lecture : sur le cachalot, les trois manettes moteur sont `inverted`
+        et le cran 0 donne 256 tr/min, le cran 15 arrete l'helice — soit
+        exactement le signal que le solveur utilise.
+        """
+        return signal
+
+    @property
+    def scale(self) -> str | None:
+        """Dans quel sens se lit cette manette, d'apres ce qu'elle commande."""
+        if not self.kinds:
+            return None
+        if self.kinds == {"transmission"}:
+            return "inverse"
+        if self.kinds == {"bruleur"}:
+            return "direct"
+        return "mixte"
+
+    #: ce que vaut chaque bout de course, par type de destinataire
+    ENDS = {
+        "inverse": "0 = plein regime, 15 = ARRET (la transmission decouple a 15)",
+        "direct": "0 = eteint, 15 = plein gaz",
+        "mixte": "destinataires de sens opposes : 0 coupe le gaz mais lance "
+                 "les helices",
+    }
 
     def report(self, signal: int | None = None) -> dict:
         s = self.initial if signal is None else signal
         out = {"pos": list(self.pos), "bloc": self.block, "signal": s,
                "angle_affiche": self.displayed_angle(s), "inverse": self.inverted,
+               "sens": self.scale,
                "commande": [list(p) for p in sorted(self.targets)]}
-        if self.inverted:
-            out["piege"] = ("levier inverse : l'angle affiche vaut 15 - signal ; "
-                            "manette au neutre a l'ecran = signal 15 = decouple")
+        note = self.ENDS.get(self.scale or "")
+        if note:
+            out["echelle"] = note
+        if self.scale in ("inverse", "mixte"):
+            out["piege"] = ("echelle renversee par le destinataire : %s" % note)
         return out
 
 
@@ -169,6 +209,8 @@ class RedstoneOrgan(Organ):
                 if any(self._drives(lever, tx) for tx in sides["tx"]):
                     targets |= per_channel[key]
             lever.targets = targets
+            lever.kinds = {"transmission" if self.consumers[t] in TRANSMISSIONS
+                           else "bruleur" for t in targets}
             driven |= targets
         self.driven = driven
         self.levers_of = {}

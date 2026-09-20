@@ -208,9 +208,46 @@ Seuils non fonctionnels, mesurés sur `c1_air_cruiser.nbt` (20 659 blocs) :
 | NF3 | chargement + analyse < 3 s | **0,50 s** |
 | NF5 | < 1 Go | **38 Mo** |
 
-Les niveaux 3 (confrontation au jeu, Speedometer et Stressometer) et 4 (bibliothèque de
-scénarios de non-régression) demandent une mesure humaine ou un corpus : ils viendront
-avec L2 et L4.
+### Niveau 3 — confrontation au jeu
+
+Les niveaux 1 et 2 vérifient que le noyau est d'accord avec lui-même. Aucun des deux ne
+dit si les **équations** sont les bonnes. C'est le rôle du niveau 3, et le cahier en fait
+la condition de livrabilité de L2 : *« le lot L2 n'est livrable que si au moins une
+grandeur du niveau 3 a été confrontée au jeu et concorde. »*
+
+Relevé au Stressometer sur `cachalot_volant_v4`, vaisseau posé, moulin assemblé —
+`data/mesures/jeu.json`, rejoué par `tests/test_mesures_jeu.py` :
+
+| Lecture | Attendu | Mesuré | |
+|---|---|---|---|
+| capacité du réseau du moulin | 8 192 su | **8 192 su** | ✅ |
+| consommation, manettes moteur à l'arrêt | 0 su | **0 su** | ✅ |
+| hélice centrale à fond (16 voiles, 256 tr/min) | 512 su | **8 192 su** | ❌ |
+| escalier de la transmission, 16 crans | 0 → 0 tr/min | **0 → 256 tr/min** | ❌ |
+
+Les deux premières lignes valident d'un coup toute la chaîne de génération : comptage des
+voiles, plafond de 16 tr/min du moulin, 512 su par tour du palier, et l'agrégation de
+`KineticNetwork`. Les deux dernières ont corrigé le modèle.
+
+**Un palier d'hélice coûte 2,0 su/tr par voile, pas 2,0 su/tr.** Facteur 16 sur le
+cachalot. La conséquence était invisible jusqu'à la mesure : son moulin ne peut pousser
+qu'**une seule** hélice à fond — les trois ensemble demandent 20 480 su pour 8 192
+disponibles, le réseau disjoncte et tout s'arrête. Le plafond utilisable est le cran 9,
+à 94 % de charge.
+
+**Le cran affiché par une manette est le signal émis**, `inverted` compris. Ce qui
+renverse l'échelle n'est pas le levier mais son destinataire : le côté réducteur d'une
+transmission analogique découple à 15 et passe en prise directe à 0. Deux manettes
+voisines sur la même console ne se lisent donc pas dans le même sens, et le bandeau
+l'écrit maintenant pour chacune.
+
+Deux réserves sont tenues explicites dans le fichier de mesures, parce qu'une mesure à un
+seul point n'est pas une loi : la loi *par voile* n'est pas départagée d'un impact
+constant de 32 su/tr tant qu'une hélice de 12 voiles n'a pas été lue (6 144 su contre
+8 192), et le sens absolu de la poussée reste à trancher sur cette coque.
+
+Le niveau 4 (bibliothèque de scénarios de non-régression) demande un corpus : il vient
+avec L4.
 
 ---
 

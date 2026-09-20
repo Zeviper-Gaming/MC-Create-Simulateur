@@ -54,19 +54,30 @@ def test_la_topologie_redstone_retrouve_les_signaux_du_jeu(cargo):
     assert result["ecarts"] == []
 
 
-def test_le_piege_du_levier_inverse(cargo):
-    """`getSignal()` renvoie `state` ; `inverted` ne change QUE l'angle affiche.
-
-    Consequence : manette visuellement au neutre sur un levier inverse, c'est
-    State = 15, donc transmission decouplee.
+def test_le_cran_affiche_est_le_signal_emis(cargo):
+    """Mesure en jeu (`data/mesures/jeu.json`) : sur une manette `inverted`,
+    le cran 0 donne 256 tr/min et le cran 15 arrete l'helice — soit exactement
+    le signal que le solveur utilise. Le modele supposait l'inverse.
     """
     inverses = [lv for lv in cargo.organ("redstone").levers if lv.inverted]
     assert inverses, "cette structure porte au moins une manette inversee"
     lv = inverses[0]
     assert lv.initial == 15
-    assert lv.displayed_angle(15) == 0
+    assert lv.displayed_angle(15) == 15
     assert lv.report(15)["signal"] == 15
-    assert "decouple" in lv.report(15)["piege"]
+
+
+def test_le_piege_est_le_sens_du_destinataire(cachalot_model):
+    """Ce qui renverse l'echelle n'est pas le levier mais la transmission :
+    son cote reducteur decouple a 15 et passe en prise directe a 0."""
+    levers = cachalot_model.organ("redstone").levers
+    moteurs = [lv for lv in levers if lv.scale == "inverse"]
+    gaz = [lv for lv in levers if lv.scale == "direct"]
+    assert moteurs and gaz, "cette console porte les deux sens cote a cote"
+    assert "ARRET" in moteurs[0].report(15)["echelle"]
+    assert "piege" in moteurs[0].report(15)
+    assert "plein gaz" in gaz[0].report(15)["echelle"]
+    assert "piege" not in gaz[0].report(15)
 
 
 def test_un_levier_atteint_ses_bruleurs(cargo):
