@@ -150,11 +150,23 @@ createsim validate
 python -m pytest
 ```
 
-| Niveau | Critère | Résultat sur `cargo_airship.nbt` |
+| Niveau | Critère | Résultat |
 |---|---|---|
-| 1 — concordance interne | régimes du NBT retrouvés à 0,5 tr/min près | **8/8**, écart réel < 10⁻⁶ |
+| 1 — concordance interne | régimes du NBT retrouvés à 0,5 tr/min près | **8/8** sur `cargo_airship`, **53/53** sur `cachalot_volant_v3` |
 | 2 — cohérence analytique | `v(t) = v_max(1−e^(−t/τ))`, τ = m/k, à mieux de 1 % | **0,000 %**, τ mesuré 2,260 s vs 2,260 s |
 | 2b — transitoire du gaz | remplissage en ~9 s (180 ticks) | 63,2 % du volume en **7,00 s** |
+
+Sur la flotte complète — six vaisseaux portant 131 régimes enregistrés — le solveur
+en retrouve **124**, soit 94,7 %.
+
+| Vaisseau | Concordance | Ce qu'il éprouve |
+|---|---|---|
+| `c1_air_cruiser` | **18/18** | moteur créatif, 147 entraînements à chaîne |
+| `cachalot_volant_v3` | **53/53** | contraptions assemblées, jauges, transmission ×16 |
+| `cargo_airship` | **8/8** | moulin à voiles, moteurs portables |
+| `sledoger_t` | 18/20 | cinq moteurs, conflit de sources |
+| `test_01` | 21/24 | banc d'essai |
+| `dirt_bike_by_smokeyblade` | 6/8 | moteur surchauffé ; 2 blocs de mods tiers |
 
 La topologie redstone est validée de la même façon : les signaux déduits des leviers sont
 comparés à ceux enregistrés dans le NBT — **7/7** sur `cargo_airship`, 16/16 sur
@@ -164,8 +176,8 @@ Seuils non fonctionnels, mesurés sur `c1_air_cruiser.nbt` (20 659 blocs) :
 
 | Réf. | Seuil | Mesuré |
 |---|---|---|
-| NF1 | ≥ 20 ticks/s | **36 488** |
-| NF3 | chargement + analyse < 3 s | **0,45 s** |
+| NF1 | ≥ 20 ticks/s | **5 206** |
+| NF3 | chargement + analyse < 3 s | **0,50 s** |
 | NF5 | < 1 Go | **38 Mo** |
 
 Les niveaux 3 (confrontation au jeu, Speedometer et Stressometer) et 4 (bibliothèque de
@@ -173,6 +185,45 @@ scénarios de non-régression) demandent une mesure humaine ou un corpus : ils v
 avec L2 et L4.
 
 ---
+
+## Ce qui manquait au solveur cinétique
+
+La confrontation aux régimes enregistrés a fait passer la concordance de 30/131 à
+124/131. Six mécanismes manquaient — aucun n'était une approximation à raffiner, tous
+étaient des absences.
+
+**L'axe de rotation d'une jauge.** Sur un compte-tours ou un manomètre, `facing`
+désigne la face d'affichage ; l'axe se dérive de `facing` et `axis_along_first`
+(Create `DirectionalAxisKineticBlock`). Les confondre coupait la transmission net :
+sur le cachalot, la propagation s'arrêtait à 16 nœuds sur 88. C'est le correctif le
+plus rentable du lot — à lui seul il fait passer ce vaisseau de 16/53 à 53/53.
+
+**Le moteur créatif** n'était pas une source. Son réglage vit dans `ScrollValue` —
+et non dans `Speed`, qui est la mesure que le solveur doit justement retrouver.
+
+**Les entraînements à chaîne** étaient hors réseau : 147 blocs sur le seul
+`c1_air_cruiser`. Deux voisins tournent à l'identique quand la direction qui les
+sépare est perpendiculaire à leurs deux axes.
+
+**L'étage ×2 du moteur portable**, que le cahier signalait sans l'expliquer, est la
+surchauffe : `GeneratedSpeed` vaut 32 partout, et seul `SuperHeated` distingue les
+moteurs à 64. Déduit de la mesure, pas du code — la table le signale comme tel.
+
+**La transmission analogique** était mal modélisée. Le bloc siège à la vitesse de son
+*arbre* ; sa roue dentée intégrée tourne à `(15 − signal)/16` de celle-ci. Appliquer
+le rapport à chaque arrivée sur le bloc faisait s'emballer toute boucle qui y
+repassait, jusqu'au plafond de 256 tr/min. Vérifié sur trois vaisseaux : 16 → 21,33
+au signal 3, 32 → 4 au signal 13, 64 → 170,67 au signal 9.
+
+**Les contraptions assemblées.** Quand un palier porte `Running: 1`, son rotor n'est
+plus dans le fichier de structure : les voiles sont *inconnaissables*, pas nulles. Le
+simulateur reprend alors `LastGenerated` et le dit, plutôt que d'annoncer un moulin à
+l'arrêt.
+
+Un sur-raccordement a été corrigé au passage : une boîte de vitesses ne se branche
+que sur un voisin qui lui présente un bout d'arbre. Un arbre posé en `x` ne se
+raccorde pas sous une boîte par le dessus — le simulateur entraînait à 256 tr/min une
+branche que le jeu laisse à l'arrêt.
 
 ## Deux corrections apportées au calculateur statique
 
@@ -208,9 +259,13 @@ Le logiciel doit le dire plutôt que de produire un chiffre faux.
 | Mods tiers | masse par défaut de 1,0 | barre d'erreur affichée (F5.8) |
 | Sens de poussée d'une hélice | convention orientation × signe du régime | à confirmer par une mesure en jeu |
 
-Le solveur cinétique reste incomplet : l'étage ×2 en sortie du moteur portable n'est pas
-modélisé, et la concordance affichée est le garde-fou. Sur `c1_air_cruiser`, elle vaut
-**0/18** — le rapport le dit au lieu de le masquer.
+Le solveur cinétique reste incomplet sur sept régimes de la flotte, et la concordance
+affichée est le garde-fou : le rapport publie le score au lieu de le masquer. Deux
+causes subsistent. Les **blocs de mods tiers** — `aeroworks:gyroscope`,
+`aeronautics_utility_objects:brass_universal_joint` — dont la cinématique n'est pas
+modélisée. Et le **conflit de sources** : quand plusieurs moteurs entraînent un même
+réseau à des régimes différents, le solveur retient le premier atteint, là où le jeu
+arbitre autrement.
 
 La conclusion garde toujours la même forme : **le simulateur dit où chercher et de combien,
 l'essai en jeu tranche.**

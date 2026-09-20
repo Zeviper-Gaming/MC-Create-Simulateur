@@ -24,10 +24,19 @@ SHAFT_LIKE = frozenset((
     "create:stressometer", "create:gearshift", "create:clutch",
     "create:windmill_bearing", "create:mechanical_bearing",
     "create:water_wheel", "create:large_water_wheel", "create:hand_crank",
+    "create:creative_motor", "create:encased_chain_drive",
+    "create:rotation_speed_controller", "create:gantry_shaft",
     "aeronautics:propeller_bearing", "aeronautics:gyroscopic_propeller_bearing",
     "simulated:analog_transmission", "simulated:directional_gearshift",
     "offroad:wheel_mount", "offroad:borehead_bearing",
 ))
+
+CHAIN_DRIVES = frozenset(("create:encased_chain_drive",))
+
+# Un embrayage alimente coupe la transmission.
+# Un aiguillage alimente inverse le sens : non modelise, il ne change que le
+# signe, et ce signe est deja marque « a confirmer en jeu » pour la poussee.
+CLUTCHES = frozenset(("create:clutch",))
 SMALL_COGS = frozenset(("create:cogwheel", "create:andesite_encased_cogwheel",
                         "create:brass_encased_cogwheel"))
 LARGE_COGS = frozenset(("create:large_cogwheel",
@@ -68,6 +77,7 @@ class KineticOrgan(Organ):
         self.components: list[list[Pos]] = []
         self.comp_of: dict[Pos, int] = {}
         self.recorded: dict[Pos, float] = {}
+        self.transmission_sides: dict[tuple[Pos, Pos], str] = {}
         self.sensitive: frozenset[Pos] = frozenset()
 
     # -- invalidation ------------------------------------------------------
@@ -87,15 +97,18 @@ class KineticOrgan(Organ):
         s = self.s
         self.nodes = {p: b for p, b in s.blocks.items() if self.is_kinetic(b["name"])}
         adj: dict[Pos, list[tuple[Pos, float]]] = defaultdict(list)
+        sides: dict[tuple[Pos, Pos], str] = {}
 
         for p in self.nodes:
             for d in SIX:
                 q = (p[0] + d[0], p[1] + d[1], p[2] + d[2])
                 if q not in self.nodes:
                     continue
-                r = self._edge_ratio(p, q, d)
+                r, side = self._edge_ratio(p, q, d)
                 if r:
                     adj[p].append((q, r))
+                    if side:
+                        sides[(p, q)] = side
 
         # engrenement en diagonale, dans le plan perpendiculaire a l'axe
         for p, b in self.nodes.items():
@@ -113,51 +126,118 @@ class KineticOrgan(Organ):
                     nb = self.nodes.get(q)
                     if not nb or axis_of(nb) != ax:
                         continue
-                    r = self._edge_ratio(p, q, (0, 0, 0))
+                    r, side = self._edge_ratio(p, q, (0, 0, 0))
                     if r:
                         adj[p].append((q, r))
+                        if side:
+                            sides[(p, q)] = side
+
+        # Chaines : deux entrainements voisins tournent a l'identique quand la
+        # direction qui les separe est perpendiculaire a leurs deux axes. Sans
+        # cela, 147 blocs du c1_air_cruiser restent hors du reseau, et les
+        # helices de queue n'ont aucune source.
+        for p, b in self.nodes.items():
+            if b["name"] not in CHAIN_DRIVES:
+                continue
+            ap = axis_of(b)
+            if not ap:
+                continue
+            for d in SIX:
+                q = (p[0] + d[0], p[1] + d[1], p[2] + d[2])
+                nb = self.nodes.get(q)
+                if not nb or nb["name"] not in CHAIN_DRIVES:
+                    continue
+                aq = axis_of(nb)
+                d_axis = "x" if d[0] else ("y" if d[1] else "z")
+                if aq and d_axis != ap and d_axis != aq:
+                    adj[p].append((q, 1.0))
 
         self.adj = dict(adj)
+        self.transmission_sides = sides
         self._build_components()
         self._build_sources()
         self._build_sensitive()
         self.recorded = self._recorded_speeds()
 
-    def _edge_ratio(self, p: Pos, q: Pos, d) -> float | None:
-        """Rapport de vitesse de p vers q, ou None s'il n'y a pas d'accouplement."""
+    def _edge_ratio(self, p: Pos, q: Pos, d):
+        """Rapport de vitesse de p vers q, et le cote de transmission traverse.
+
+        Renvoie `(ratio, cote)`, ou `(None, None)` s'il n'y a pas d'accouplement.
+        `cote` vaut None sauf quand l'arete franchit une transmission analogique :
+        son rapport depend du signal, qui change en cours de simulation, donc il
+        est applique au tick et non fige dans la topologie.
+        """
         t = self.tables
         bp, bq = self.nodes[p], self.nodes[q]
         np_, nq = bp["name"], bq["name"]
+
+        # Un embrayage alimente coupe la transmission : sans cela le solveur
+        # entraine tout un arbre que le jeu laisse a l'arret.
+        if ((np_ in CLUTCHES and _powered(bp))
+                or (nq in CLUTCHES and _powered(bq))):
+            return None, None
+
         ap, aq = axis_of(bp), axis_of(bq)
         d_axis = "x" if d[0] else ("y" if d[1] else "z")
+
+        # --- transmission analogique : un cote arbre, un cote roue dentee ----
+        # Le bloc siege a la vitesse de son ARBRE ; sa roue dentee integree
+        # (`ExtraCogwheel` dans le NBT) tourne a (15 - signal)/16 de celle-ci.
+        # Verifie sur trois vaisseaux : 16 -> 21,33 au signal 3 (c1_air_cruiser),
+        # 32 -> 4 au signal 13 (sledoger_t), 64 -> 170,67 au signal 9 (dirt_bike).
+        if np_ == ANALOG_TRANSMISSION or nq == ANALOG_TRANSMISSION:
+            if np_ == ANALOG_TRANSMISSION and nq == ANALOG_TRANSMISSION:
+                return None, None
+            if np_ == ANALOG_TRANSMISSION:
+                axis, outgoing = ap, True
+            else:
+                axis, outgoing = aq, False
+            if axis and d_axis == axis:
+                return t.get("kinetics.ratio_shaft"), None       # cote arbre
+            meshing = t.get("kinetics.ratio_small_to_small_cog")
+            return meshing, ("arbre_vers_roue" if outgoing else "roue_vers_arbre")
 
         p_small, q_small = np_ in SMALL_COGS, nq in SMALL_COGS
         p_large, q_large = np_ in LARGE_COGS, nq in LARGE_COGS
 
         if p_large and q_small:
-            return t.get("kinetics.ratio_large_to_small_cog")
+            return t.get("kinetics.ratio_large_to_small_cog"), None
         if p_small and q_large:
-            return t.get("kinetics.ratio_small_to_large_cog")
+            return t.get("kinetics.ratio_small_to_large_cog"), None
         if p_large and q_large:
-            return t.get("kinetics.ratio_large_to_large_cog")
+            return t.get("kinetics.ratio_large_to_large_cog"), None
         if p_small and q_small:
             if ap and ap == aq and d_axis != ap:
-                return t.get("kinetics.ratio_small_to_small_cog")
-            return None
+                return t.get("kinetics.ratio_small_to_small_cog"), None
+            return None, None
 
         if "analog_transmission" in (np_.split(":")[-1], nq.split(":")[-1]):
             if (p_small or q_small) and ap and ap == aq and d_axis != ap:
-                return t.get("kinetics.ratio_small_to_small_cog")
+                return t.get("kinetics.ratio_small_to_small_cog"), None
 
-        if "gearbox" in np_ or "gearbox" in nq:
-            gb_axis = ap if "gearbox" in np_ else aq
-            return t.get("kinetics.ratio_shaft") if d_axis != gb_axis else None
+        # Boite de vitesses : elle presente une face d'arbre dans les quatre
+        # directions perpendiculaires a son axe, et rien le long de son axe.
+        # Le voisin doit lui aussi presenter un BOUT dans cette direction : un
+        # arbre pose en x ne se branche pas sous une boite par le dessus.
+        # Sans cette seconde condition, le solveur entraine a 256 tr/min une
+        # branche que le jeu laisse a l'arret (cachalot_volant_v3, x=63).
+        p_gearbox, q_gearbox = "gearbox" in np_, "gearbox" in nq
+        if p_gearbox or q_gearbox:
+            if p_gearbox and d_axis == ap:
+                return None, None
+            if q_gearbox and d_axis == aq:
+                return None, None
+            if not p_gearbox and ap is not None and ap != d_axis:
+                return None, None
+            if not q_gearbox and aq is not None and aq != d_axis:
+                return None, None
+            return t.get("kinetics.ratio_shaft"), None
 
         if ap and ap == d_axis and (aq == d_axis or aq is None):
-            return t.get("kinetics.ratio_shaft")
+            return t.get("kinetics.ratio_shaft"), None
         if ap is None or aq is None:
-            return t.get("kinetics.ratio_shaft")
-        return None
+            return t.get("kinetics.ratio_shaft"), None
+        return None, None
 
     def _build_components(self) -> None:
         parent = {p: p for p in self.nodes}
@@ -195,6 +275,14 @@ class KineticOrgan(Organ):
             spec = gens.get(name)
             if name == "create:windmill_bearing":
                 bearing = bearings.at(pos) if bearings else None
+                if bearing is not None and bearing.assembled:
+                    # Rotor assemble : ses voiles ne sont pas dans le fichier.
+                    # Le jeu fournit sa propre verite terrain, on la reprend
+                    # plutot que d'annoncer un moulin a l'arret.
+                    rpm = abs(bearing.last_generated)
+                    if rpm:
+                        out.append(Source(pos, name, "mesure_du_jeu", rpm))
+                    continue
                 sails = bearing.sails if bearing else 0
                 rpm = windmill_rpm(sails, sails_per_rpm, min_sails, max_rpm)
                 if rpm:
@@ -202,6 +290,25 @@ class KineticOrgan(Organ):
                 continue
             if spec and spec.get("kind") == "fixed":
                 out.append(Source(pos, name, "fixe", float(spec["rpm"])))
+                continue
+            if spec and spec.get("kind") == "nbt":
+                # On lit le REGLAGE du bloc, pas sa vitesse mesuree : se servir
+                # de `Speed` rendrait la concordance circulaire, puisque c'est
+                # justement elle que le solveur doit retrouver.
+                nbt = b.get("nbt") or {}
+                value = nbt.get(spec["field"])
+                if value is None and spec.get("fallback"):
+                    value = nbt.get(spec["fallback"])
+                if value is None:
+                    value = spec.get("rpm")
+                rpm = abs(float(value or 0.0))
+                doubler = spec.get("doubler")
+                if doubler and nbt.get(doubler):
+                    # Un moteur surchauffe double sa sortie : c'est l'etage x2
+                    # qui manquait au solveur.
+                    rpm *= t.get("kinetics.superheated_multiplier")
+                if rpm:
+                    out.append(Source(pos, name, "reglage", rpm))
                 continue
             if name.endswith("_portable_engine"):
                 out.append(Source(pos, name, "fixe",
@@ -259,3 +366,8 @@ def analog_transmission_ratio(signal: int) -> dict:
         return {"mode": "decouple", "reduction": None, "augmentation": None}
     return {"mode": "actif", "reduction": (15 - signal) / 16.0,
             "augmentation": 16.0 / (15 - signal)}
+
+
+def _powered(block: dict) -> bool:
+    """Etat redstone d'un bloc, lu dans son blockstate."""
+    return block.get("props", {}).get("powered") == "true"

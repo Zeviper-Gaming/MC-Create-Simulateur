@@ -40,6 +40,16 @@ def simplify(v):
     return str(v)
 
 
+FACING_AXIS = {"east": "x", "west": "x", "up": "y", "down": "y",
+               "north": "z", "south": "z"}
+
+# Create DirectionalAxisKineticBlock : l'axe de rotation est perpendiculaire a
+# `facing`, et `axis_along_first` choisit lequel des deux. C'est le cas des
+# jauges (compte-tours, manometre) et des boitiers orientes : leur `facing`
+# designe la face d'affichage, pas l'axe.
+PERPENDICULAR = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
+
+
 def axis_of(block: dict) -> str | None:
     """Axe de rotation d'un bloc cinetique, d'apres son etat."""
     props = block.get("props") or {}
@@ -47,13 +57,13 @@ def axis_of(block: dict) -> str | None:
     if ax:
         return ax
     facing = props.get("facing")
-    if facing in ("east", "west"):
-        return "x"
-    if facing in ("up", "down"):
-        return "y"
-    if facing in ("north", "south"):
-        return "z"
-    return None
+    face_axis = FACING_AXIS.get(facing)
+    if face_axis is None:
+        return None
+    if "axis_along_first" in props:
+        first, second = PERPENDICULAR[face_axis]
+        return first if props["axis_along_first"] == "true" else second
+    return face_axis
 
 
 class Structure:

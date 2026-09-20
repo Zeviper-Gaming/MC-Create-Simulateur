@@ -64,13 +64,21 @@ def solve_speeds(kin: KineticOrgan, signals: dict[Pos, int] | None = None,
             for nxt, ratio in kin.adj.get(cur, ()):
                 v = speeds[cur] * ratio
                 block = kin.nodes[nxt]
-                if block["name"] == ANALOG_TRANSMISSION:
-                    nbt = block.get("nbt") or {}
-                    sig = int(signals.get(nxt, nbt.get("Signal", 0) or 0))
+                side = kin.transmission_sides.get((cur, nxt))
+                if side is not None:
+                    # Le rapport ne s'applique qu'entre l'arbre et la roue
+                    # dentee integree, jamais en traversant le bloc de part en
+                    # part : sans cette distinction, une boucle qui repasse par
+                    # la transmission multiplie a chaque tour et s'emballe
+                    # jusqu'au plafond de rotation.
+                    owner = nxt if side == "roue_vers_arbre" else cur
+                    nbt = kin.nodes[owner].get("nbt") or {}
+                    sig = int(signals.get(owner, nbt.get("Signal", 0) or 0))
                     if sig >= decouple:
                         continue
-                    if 1 <= sig <= decouple - 1:
-                        v *= numerator / (decouple - sig)
+                    if sig > 0:
+                        reduction = (decouple - sig) / numerator
+                        v *= reduction if side == "arbre_vers_roue" else 1.0 / reduction
                 if abs(v) > ceiling:
                     v = math.copysign(ceiling, v)
                 if nxt in speeds:

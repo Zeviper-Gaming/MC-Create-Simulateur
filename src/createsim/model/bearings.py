@@ -84,9 +84,10 @@ def attached_towards(name: str, props: dict, direction: str) -> bool:
 
 class Bearing:
     __slots__ = ("pos", "name", "facing", "step", "start", "rotor", "sails",
-                 "contacts", "reliable")
+                 "contacts", "reliable", "assembled", "last_generated")
 
-    def __init__(self, pos: Pos, name: str, facing: str | None):
+    def __init__(self, pos: Pos, name: str, facing: str | None,
+                 assembled: bool = False, last_generated: float = 0.0):
         self.pos = pos
         self.name = name
         self.facing = facing
@@ -96,6 +97,15 @@ class Bearing:
         self.sails = 0
         self.contacts: list[dict] = []
         self.reliable = True
+        # `Running: 1` : la contraption est assemblee, donc ses blocs ne sont
+        # PLUS dans le fichier de structure. Le compte de voiles est alors
+        # inconnaissable, et `LastGenerated` est la seule verite disponible.
+        self.assembled = assembled
+        self.last_generated = last_generated
+
+    @property
+    def sails_known(self) -> bool:
+        return not self.assembled
 
     def in_front(self, q: Pos) -> bool:
         if self.step is None or self.start is None:
@@ -104,16 +114,26 @@ class Bearing:
         return sum((q[i] - s[i]) * st[i] for i in range(3)) >= 0
 
     def report(self) -> dict:
-        return {
+        out = {
             "pos": list(self.pos), "bloc": self.name, "orientation": self.facing,
-            "voiles": self.sails, "blocs_rotor": len(self.rotor),
-            "comptage_fiable": self.reliable,
+            "voiles": None if self.assembled else self.sails,
+            "blocs_rotor": len(self.rotor),
+            "comptage_fiable": self.reliable and not self.assembled,
             "contacts_coque": self.contacts[:3],
+            "assemble": self.assembled,
             "fiabilite": (
-                None if self.reliable else
+                None if (self.reliable and not self.assembled) else
                 "heuristique bornee au demi-espace avant : le comptage des "
                 "voiles peut etre un majorant"),
         }
+        if self.assembled:
+            out["regime_du_jeu"] = self.last_generated
+            out["fiabilite"] = (
+                "rotor assemble : ses blocs ne sont pas dans le fichier de "
+                "structure. Les voiles sont inconnaissables et le regime est "
+                "repris de la mesure du jeu (LastGenerated). Limite du format, "
+                "pas defaut du vaisseau.")
+        return out
 
 
 class BearingOrgan(Organ):
@@ -139,8 +159,13 @@ class BearingOrgan(Organ):
         self.bearings = []
         for name in BEARINGS:
             for pos in sorted(self.s.positions_of(name)):
-                b = Bearing(pos, name, self.s.blocks[pos]["props"].get("facing"))
-                self._trace(b)
+                block = self.s.blocks[pos]
+                nbt = block.get("nbt") or {}
+                b = Bearing(pos, name, block["props"].get("facing"),
+                            assembled=bool(nbt.get("Running")),
+                            last_generated=float(nbt.get("LastGenerated") or 0.0))
+                if not b.assembled:
+                    self._trace(b)
                 self.bearings.append(b)
         self.bearings.sort(key=lambda b: b.pos)
 
