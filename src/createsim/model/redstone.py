@@ -98,6 +98,8 @@ class RedstoneOrgan(Organ):
         self.consumers: dict[Pos, str] = {}
         self.initial_signal: dict[Pos, int] = {}
         self.driven: set[Pos] = set()
+        self.channel_of: dict[Pos, tuple] = {}
+        self.levers_of: dict[Pos, list[Pos]] = {}
         self.sensitive: frozenset[Pos] = frozenset()
 
     def affected_by(self, pos: Pos) -> bool:
@@ -151,11 +153,14 @@ class RedstoneOrgan(Organ):
     def _build_targets(self) -> None:
         # ce que chaque canal alimente, par ses recepteurs
         per_channel: dict[tuple, set[Pos]] = {}
+        self.channel_of = {}
         for key, sides in self.channels.items():
             reached: set[Pos] = set()
             for rx in sides["rx"]:
                 reached |= self._consumers_near(rx, self.link_attach.get(rx))
             per_channel[key] = reached
+            for consumer in reached:
+                self.channel_of.setdefault(consumer, key)
 
         driven: set[Pos] = set()
         for lever in self.levers:
@@ -166,6 +171,10 @@ class RedstoneOrgan(Organ):
             lever.targets = targets
             driven |= targets
         self.driven = driven
+        self.levers_of = {}
+        for lever in self.levers:
+            for target in lever.targets:
+                self.levers_of.setdefault(target, []).append(lever.pos)
 
     def _drives(self, lever: Lever, tx: Pos) -> bool:
         """Un levier pilote un emetteur s'ils alimentent le meme bloc."""

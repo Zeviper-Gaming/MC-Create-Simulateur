@@ -316,3 +316,21 @@ def build_kinetic_mesh(structure, model, speeds, ceiling: float = 256.0) -> Mesh
         grid[pos] = index
     palette = np.array((MUTED,) + RPM_RAMP, dtype=np.float32)
     return build_from_grid(grid, size, palette=palette)
+
+
+def build_marked_mesh(groups, size) -> Mesh:
+    """Maille plusieurs ensembles de cellules, chacun avec sa couleur.
+
+    Sert a la surbrillance d'une commande et de ses destinataires (F4.3) :
+    le levier d'un cote, ce qu'il pilote de l'autre.
+    """
+    grid = np.full(tuple(int(v) for v in size), -1, dtype=np.int8)
+    palette = []
+    for index, (cells, color) in enumerate(groups):
+        palette.append(color)
+        for pos in cells:
+            if all(0 <= pos[i] < size[i] for i in range(3)):
+                grid[pos] = index
+    if not palette:
+        return Mesh()
+    return build_from_grid(grid, size, palette=np.array(palette, np.float32))

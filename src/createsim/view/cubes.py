@@ -219,32 +219,77 @@ GL_COLOR_BUFFER_BIT = 0x4000
 GL_DEPTH_BUFFER_BIT = 0x0100
 
 
+def _empty_arrays():
+    empty = np.empty(0, np.float32)
+    return empty, empty.copy(), empty.copy()
+
+
 class _Batch:
-    """Un jeu de sommets sur le GPU : position, normale, couleur."""
+    """Un jeu de sommets sur le GPU : position, normale, couleur.
+
+    Les tampons sont alloues avec de la marge et reecrits sur place : en temps
+    reel, les fleches de force changent vingt fois par seconde, et detruire
+    puis recreer trois tampons a chaque tick userait le pilote pour rien.
+    """
+
+    GROWTH = 1.6
 
     def __init__(self, positions, normals, colors):
         self.count = positions.size // 3
         self._data = (positions, normals, colors)
+        self._capacity = 0
         self.vao: QtOpenGL.QOpenGLVertexArrayObject | None = None
         self.buffers: list[QtOpenGL.QOpenGLBuffer] = []
 
     def upload(self, program) -> None:
-        if not self.count:
-            return
         self.vao = QtOpenGL.QOpenGLVertexArrayObject()
         self.vao.create()
         self.vao.bind()
+        self._capacity = max(int(self.count * self.GROWTH), 3)
         for index, data in enumerate(self._data):
             buffer = QtOpenGL.QOpenGLBuffer(QtOpenGL.QOpenGLBuffer.Type.VertexBuffer)
             buffer.create()
             buffer.bind()
-            buffer.setUsagePattern(QtOpenGL.QOpenGLBuffer.UsagePattern.StaticDraw)
-            buffer.allocate(data.tobytes(), int(data.nbytes))
+            buffer.setUsagePattern(QtOpenGL.QOpenGLBuffer.UsagePattern.DynamicDraw)
+            buffer.allocate(self._capacity * 3 * 4)
+            if data.size:
+                buffer.write(0, data.tobytes(), int(data.nbytes))
             program.enableAttributeArray(index)
             program.setAttributeBuffer(index, GL_FLOAT, 0, 3)
             self.buffers.append(buffer)
         self.vao.release()
         self._data = ()
+
+    def update(self, positions, normals, colors, program) -> None:
+        """Remplace le contenu. Ne reallouve que si la place manque."""
+        count = positions.size // 3
+        if self.vao is None:
+            self._data = (positions, normals, colors)
+            self.count = count
+            self.upload(program)
+            return
+        self.vao.bind()
+        if count > self._capacity:
+            self._capacity = max(int(count * self.GROWTH), 3)
+            for buffer in self.buffers:
+                buffer.bind()
+                buffer.allocate(self._capacity * 3 * 4)
+        for buffer, data in zip(self.buffers, (positions, normals, colors)):
+            buffer.bind()
+            if data.size:
+                buffer.write(0, data.tobytes(), int(data.nbytes))
+        self.vao.release()
+        self.count = count
+
+    def update_colors(self, colors) -> None:
+        """Ne reecrit que la couleur. La geometrie d'un volume de gaz ne bouge
+        jamais : seule sa teinte suit le remplissage."""
+        if self.vao is None or not self.buffers or not colors.size:
+            return
+        self.vao.bind()
+        self.buffers[2].bind()
+        self.buffers[2].write(0, colors.tobytes(), int(colors.nbytes))
+        self.vao.release()
 
     def draw(self, gl, first: int = 0, count: int | None = None) -> None:
         if not self.count or self.vao is None:
@@ -260,6 +305,7 @@ class CubeView(QOpenGLWidget):
     fps_measured = QtCore.Signal(float)
     groups_changed = QtCore.Signal()
     layer_changed = QtCore.Signal(str)
+    resized = QtCore.Signal()
 
     def __init__(self, mesh: Mesh, overlay=None, volumes=None, kinetic=None,
                  parent=None, background=(0.09, 0.10, 0.12)):
@@ -308,6 +354,9 @@ class CubeView(QOpenGLWidget):
         self.batches["blocs"] = _Batch(self.mesh.positions, self.mesh.normals,
                                        self.mesh.colors)
         self.batches["blocs"].upload(self.programs["blocs"])
+        self.batches["surbrillance"] = _Batch(
+            *_empty_arrays())
+        self.batches["surbrillance"].upload(self.programs["surimpression"])
         if self.kinetic is not None and self.kinetic.vertices:
             batch = _Batch(self.kinetic.positions, self.kinetic.normals,
                            self.kinetic.colors)
@@ -339,6 +388,10 @@ class CubeView(QOpenGLWidget):
         self.uniforms[name] = {"mvp": program.uniformLocation("mvp")}
         program.release()
         self.programs[name] = program
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.resized.emit()
 
     def resizeGL(self, w: int, h: int) -> None:
         QtGui.QOpenGLContext.currentContext().functions().glViewport(0, 0, w, h)
@@ -389,6 +442,14 @@ class CubeView(QOpenGLWidget):
             gl.glDisable(GL_BLEND)
             self._draw_overlay("surimpression", gl, matrix)
             gl.glEnable(GL_CULL_FACE)
+        if self.batches.get("surbrillance") is not None:
+            gl.glEnable(GL_BLEND)
+            gl.glDisable(GL_DEPTH_TEST)
+            gl.glDepthMask(False)
+            self._draw("surbrillance", "fantome", gl, matrix)
+            gl.glEnable(GL_DEPTH_TEST)
+            gl.glDepthMask(True)
+            gl.glDisable(GL_BLEND)
         self._tick_fps()
 
     def _draw(self, batch_name: str, program_name: str, gl, matrix) -> None:
@@ -411,6 +472,85 @@ class CubeView(QOpenGLWidget):
             if group in self.visible_groups:
                 batch.draw(gl, first, count)
         program.release()
+
+    # -- mise a jour en temps reel -----------------------------------------
+    def set_overlay(self, overlay) -> None:
+        """Remplace les vecteurs de force sans reconstruire la scene."""
+        self.overlay = overlay
+        batch = self.batches.get("surimpression")
+        if batch is None:
+            return
+        self.makeCurrent()
+        batch.update(overlay.positions, overlay.normals, overlay.colors,
+                     self.programs["surimpression"])
+        self.doneCurrent()
+        self.visible_groups &= set(overlay.ranges)
+        self.update()
+
+    def set_highlight(self, mesh) -> None:
+        """Met en evidence une commande et ses destinataires (F4.3)."""
+        batch = self.batches.get("surbrillance")
+        if batch is None:
+            return
+        self.makeCurrent()
+        if mesh is None or not mesh.vertices:
+            batch.update(*_empty_arrays(), self.programs["surimpression"])
+        else:
+            batch.update(mesh.positions, mesh.normals, mesh.colors,
+                         self.programs["surimpression"])
+        self.doneCurrent()
+        self.update()
+
+    def set_blocks(self, mesh, kinetic=None) -> None:
+        """Rafraichit la teinte des blocs (regimes qui ont change)."""
+        self.makeCurrent()
+        if mesh is not None:
+            self.mesh = mesh
+            self.batches["blocs"].update(mesh.positions, mesh.normals,
+                                         mesh.colors, self.programs["blocs"])
+        if kinetic is not None:
+            self.kinetic = kinetic
+            batch = self.batches.get("cinetique")
+            if batch is None:
+                batch = _Batch(kinetic.positions, kinetic.normals, kinetic.colors)
+                batch.upload(self.programs["blocs"])
+                self.batches["cinetique"] = batch
+            else:
+                batch.update(kinetic.positions, kinetic.normals, kinetic.colors,
+                             self.programs["blocs"])
+        self.doneCurrent()
+        self.update()
+
+    def set_volume_tints(self, tints) -> None:
+        """Reteinte les volumes de gaz sans refaire leur maillage."""
+        if not self.batches:
+            return
+        self.makeCurrent()
+        for index, tint in enumerate(tints):
+            batch = self.batches.get("volume%d" % index)
+            if batch is None or not batch.count:
+                continue
+            colors = np.tile(np.asarray(tint, np.float32), (batch.count, 1))
+            batch.update_colors(colors.ravel())
+        self.doneCurrent()
+        self.update()
+
+    def set_volumes(self, volumes) -> None:
+        """Rafraichit les volumes de gaz, dont la teinte suit le remplissage."""
+        self.volumes = list(volumes)
+        self.makeCurrent()
+        for index, (volume, _label) in enumerate(self.volumes):
+            key = "volume%d" % index
+            batch = self.batches.get(key)
+            if batch is None:
+                batch = _Batch(volume.positions, volume.normals, volume.colors)
+                batch.upload(self.programs["volume"])
+                self.batches[key] = batch
+            else:
+                batch.update(volume.positions, volume.normals, volume.colors,
+                             self.programs["volume"])
+        self.doneCurrent()
+        self.update()
 
     def toggle_group(self, group: str) -> None:
         if group in self.visible_groups:

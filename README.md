@@ -8,10 +8,12 @@ monde, sans serveur.
 Le but n'est pas de montrer *ce que* le véhicule fait, mais **quelle force en est
 responsable**. En jeu, on voit le résultat et jamais la décomposition.
 
-> **État : lots L0 et L1 livrés.** L0 est le noyau physique, sans interface, dont les
-> deux niveaux de validation automatiques passent — c'est le critère de livrabilité.
-> L1 est la fenêtre 3D en lecture seule : les blocs, les centres, et les forces à
-> l'état initial. Reste le bandeau de contrôle et la boucle temps réel (L2).
+> **État : lots L0, L1 et L2 livrés — le périmètre demandé est atteint.**
+> L0 est le noyau physique, sans interface, dont les deux niveaux de validation
+> automatiques passent. L1 est la fenêtre 3D : blocs, centres, et décomposition des
+> forces. L2 est le bandeau de contrôle et la boucle temps réel — on actionne les
+> commandes du vaisseau et on le voit réagir. Restent le diagnostic outillé et les
+> courbes (L3), les scénarios (L4), l'édition de blocs (L5) et le tangage complet (L6).
 
 ---
 
@@ -58,10 +60,12 @@ pip install PySide6
 createsim voir mon_vaisseau.nbt
 ```
 
-La fenêtre de L1 : le véhicule **et les forces qui s'exercent dessus**. Chaque force
-est dessinée à son point d'application, avec une longueur proportionnelle à son
-intensité ; la résultante et le couple net sont distincts ; les centres de masse et de
-portance sont matérialisés, avec le bras de levier entre eux.
+La fenêtre : le véhicule, **les forces qui s'exercent dessus**, et un bandeau latéral
+qui expose ses commandes réelles. Chaque force est dessinée à son point d'application
+avec une longueur proportionnelle à son intensité ; la résultante et le couple net
+sont distincts ; les centres de masse et de portance sont matérialisés, avec le bras
+de levier entre eux. La simulation tourne à 1/20 s et l'effet d'une commande est
+visible immédiatement.
 
 | Touche | Effet |
 |---|---|
@@ -256,6 +260,50 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
+
+## L2 : actionner les commandes et voir le vaisseau réagir
+
+C'est le périmètre demandé par le cahier — le minimum vendable. Un bandeau vertical à
+droite, sections repliables, valeurs modifiables en continu, **aucun bouton
+« appliquer »**.
+
+**Le bandeau n'expose que ce qui existe dans le fichier.** Un vaisseau sans roues n'a
+pas de section roues. Un brûleur commandé par un levier n'est pas réglable directement :
+on actionne le levier, et le brûleur suit. C'est ce qui distingue un simulateur d'un
+tableur — on pilote le véhicule tel qu'il est câblé, pas ses paramètres internes.
+
+| Section | Contenu |
+|---|---|
+| Simulation | pause, ×1/×4/×16, avance d'un tick, remise à zéro, convergence directe |
+| Commandes de bord | un curseur 0-15 par levier réel, sa position, ce qu'il commande |
+| Groupes de brûleurs | un groupe par canal redstone : signal reçu, réglage molette, sortie, remplissage en direct |
+| Transmissions | signal, mode, rapport effectif — **le découplage à 15 est écrit en toutes lettres** |
+| Propulsion | par palier : régime, voiles, poussée, part dans la poussée totale |
+| Situation | altitude, sol, friction, et les constantes du jeu derrière un mode expert |
+
+| Réf. | Exigence | État |
+|---|---|---|
+| F2.4 | pause, ×1, ×4, ×16, avance d'un tick | ✅ |
+| F2.7 | mode statique : convergence directe vers l'équilibre | ✅ |
+| F4.1 | une commande d'interface par commande réelle, avec sa position | ✅ |
+| F4.2 | propagation immédiate par les liaisons redstone | ✅ |
+| F4.3 | sélectionner une commande la met en surbrillance avec ses destinataires | ✅ |
+| F4.4 | paramètres de situation modifiables simulation en cours | ✅ |
+| F4.5 | sauvegarde et rappel de jeux de réglages nommés | ✅ |
+| F4.6 | valeur numérique systématique à côté de chaque curseur | ✅ |
+| F4.7 | constantes modifiables, en signalant l'écart au réglage du jeu | ✅ |
+
+Sur une manette `inverted`, le bandeau affiche **les deux** nombres — « angle en jeu 0 ·
+signal émis 15 » — parce que la confusion entre les deux est exactement le piège à
+lever, et qu'elle coûte une transmission découplée sans qu'on comprenne pourquoi.
+
+### Le piège de performance
+
+La boucle est tombée à **22 tours/s**, frôlant le seuil obligatoire, avant qu'un profil
+ne désigne le coupable : la géométrie des poches de gaz était **remaillée à chaque
+tick**, 33 ms par tour. Or elle ne change qu'à l'édition d'un bloc — seule sa teinte
+suit le remplissage. En ne réécrivant que le tampon de couleur, la boucle passe à
+**100 tours/s** sur `cargo_airship` et **84** sur `c1_air_cruiser`.
 
 ## L1 : la décomposition des forces
 

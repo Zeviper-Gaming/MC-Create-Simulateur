@@ -154,14 +154,15 @@ class Hud(QtWidgets.QWidget):
             note = ""
             if entry.get("negligeable"):
                 note = "  (%d negligeable(s))" % entry["negligeable"]
-            rows.append((entry["groupe"], value + note, entry["couleur"],
+            rows.append(("%d %s" % (len(rows) + 1, entry["groupe"]),
+                         value + note, entry["couleur"],
                          entry["groupe"] in self.visible_groups))
 
         metrics = self._font(painter, 10)
         label_w = max(metrics.horizontalAdvance(a) for a, _b, _c, _d in rows)
         value_w = max(metrics.horizontalAdvance(b) for _a, b, _c, _d in rows)
         extras = [t for t in (self.scale_text, self.mode, self.footer) if t]
-        width = max(self.PAD * 2 + 18 + label_w + 20 + value_w,
+        width = max(self.PAD * 2 + 18 + label_w + 24 + value_w,
                     self.PAD * 2 + max((metrics.horizontalAdvance(t)
                                         for t in extras), default=0))
         height = self.PAD * 2 + self.LINE * (len(rows) + 1 + len(extras))
@@ -174,7 +175,7 @@ class Hud(QtWidgets.QWidget):
         painter.setPen(ACCENT)
         painter.drawText(QtCore.QPointF(rect.left() + self.PAD, y), "forces")
         self._font(painter, 10)
-        for index, (label, value, color, shown) in enumerate(rows, start=1):
+        for label, value, color, shown in rows:
             y += self.LINE
             swatch = QtGui.QColor.fromRgbF(*color)
             if not shown:
@@ -185,7 +186,7 @@ class Hud(QtWidgets.QWidget):
                 QtCore.QRectF(rect.left() + self.PAD, y - 9, 11, 11), 2, 2)
             painter.setPen(TEXT if shown else DIM)
             painter.drawText(QtCore.QPointF(rect.left() + self.PAD + 18, y),
-                             "%d %s" % (index, label))
+                             label)
             painter.setPen(TEXT if shown else DIM)
             painter.drawText(
                 QtCore.QPointF(rect.right() - self.PAD

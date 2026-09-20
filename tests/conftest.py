@@ -31,3 +31,9 @@ def cargo(tables) -> VehicleModel:
 @pytest.fixture
 def sim(cargo) -> Simulation:
     return Simulation(cargo, SimOptions())
+
+
+@pytest.fixture
+def cachalot_model(tables) -> VehicleModel:
+    """Contraptions assemblees, jauges, transmission decouplee a 15."""
+    return VehicleModel.load(str(FIXTURES / "cachalot_volant_v3.nbt"), tables)
