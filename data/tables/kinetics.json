@@ -1,0 +1,169 @@
+{
+  "entries": {
+    "analog_transmission_decouple_signal": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "AnalogTransmissionBlockEntity",
+      "value": 15
+    },
+    "analog_transmission_numerator": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "note": "verifie en jeu : 16 tr/min, signal 14, augmentation, donne 256",
+      "source": "AnalogTransmissionBlockEntity : 16/(15-signal)",
+      "value": 16.0
+    },
+    "generators": {
+      "mod": "config/*-server.toml (instance La Bonne Compagnie)",
+      "source": "Create + Simulated, sources de rotation",
+      "value": {
+        "create:large_water_wheel": {
+          "kind": "fixed",
+          "rpm": 4.0
+        },
+        "create:water_wheel": {
+          "kind": "fixed",
+          "rpm": 8.0
+        },
+        "create:windmill_bearing": {
+          "kind": "sails",
+          "rpm": null
+        },
+        "simulated:black_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:blue_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:brown_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:cyan_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:gray_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:green_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:light_blue_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:light_gray_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:lime_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:magenta_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:orange_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:pink_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:purple_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:red_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:white_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        },
+        "simulated:yellow_portable_engine": {
+          "kind": "fixed",
+          "rpm": 32.0
+        }
+      }
+    },
+    "max_blocks_moved": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "SimAssembly ; simulated-server.toml [assembly]",
+      "value": 128000
+    },
+    "max_rotation_speed": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "CKinetics.maxRotationSpeed",
+      "value": 256.0
+    },
+    "max_swivel_bearing_rpm": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "SimBlockConfigs",
+      "value": 96.0
+    },
+    "portable_engine_rpm": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "PortableEngineBlockEntity : allume 32, sinon 0",
+      "value": 32.0
+    },
+    "ratio_large_to_large_cog": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Create RotationPropagator.getRotationSpeedModifier()",
+      "value": 1.0
+    },
+    "ratio_large_to_small_cog": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Create RotationPropagator.getRotationSpeedModifier()",
+      "value": -2.0
+    },
+    "ratio_shaft": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "note": "bout a bout sur le meme axe",
+      "source": "Create RotationPropagator.getRotationSpeedModifier()",
+      "value": 1.0
+    },
+    "ratio_small_to_large_cog": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Create RotationPropagator.getRotationSpeedModifier()",
+      "value": -0.5
+    },
+    "ratio_small_to_small_cog": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Create RotationPropagator.getRotationSpeedModifier()",
+      "value": -1.0
+    },
+    "water_wheel_base_rpm": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "WaterWheelBlockEntity : 8 / size",
+      "value": 8
+    },
+    "windmill_max_rpm": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "WindmillBearingBlockEntity.getGeneratedSpeed()",
+      "value": 16
+    },
+    "windmill_min_sails": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "CKinetics.minimumWindmillSails",
+      "value": 8
+    },
+    "windmill_sails_per_rpm": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "CKinetics.windmillSailsPerRPM ; create-server.toml",
+      "value": 8
+    }
+  },
+  "name": "kinetics",
+  "schema": 1
+}

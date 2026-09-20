@@ -1,0 +1,39 @@
+{
+  "avertissement": "Create Aeronautics est en alpha : ces valeurs bougeront. Rejouer 'createsim tables import' apres une mise a jour de mod.",
+  "config": {
+    "fichiers": [
+      "create-server.toml",
+      "aeronautics-server.toml",
+      "simulated-server.toml",
+      "offroad-server.toml"
+    ],
+    "instance": "La Bonne Compagnie"
+  },
+  "extracted": "2026-09-19",
+  "generated": "2026-09-20",
+  "loader": "NeoForge",
+  "minecraft": "1.21.1",
+  "mods": {
+    "aeronautics": {
+      "jar": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "note": "empaquete : aeronautics + simulated + offroad",
+      "version": "1.3.1"
+    },
+    "create": {
+      "jar": "create-1.21.1-6.0.10.jar",
+      "version": "6.0.10"
+    },
+    "sable": {
+      "jar": "sable-neoforge-1.21.1-2.0.5.jar",
+      "version": "2.0.5"
+    }
+  },
+  "schema": 1,
+  "tables": [
+    "masses",
+    "pressure",
+    "forces",
+    "kinetics",
+    "stress"
+  ]
+}

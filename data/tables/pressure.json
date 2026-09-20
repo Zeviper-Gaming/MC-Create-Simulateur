@@ -1,0 +1,58 @@
+{
+  "entries": {
+    "base_pressure": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
+      "value": 1.0
+    },
+    "gravity": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "note": "DEFAULT_GRAVITY = (0, -11, 0)",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
+      "value": 11.0
+    },
+    "logical_height": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Minecraft overworld",
+      "value": 384
+    },
+    "min_y": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Minecraft overworld",
+      "value": -64
+    },
+    "pressure_cap": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+      "value": 1.5
+    },
+    "pressure_k": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+      "value": -0.004
+    },
+    "pressure_step": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+      "value": 200.0
+    },
+    "pressure_top_margin": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+      "value": 40.0
+    },
+    "sea_level": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "Minecraft overworld",
+      "value": 63
+    },
+    "universal_drag": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "note": "non applique en L0",
+      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
+      "value": 0.09
+    }
+  },
+  "name": "pressure",
+  "schema": 1
+}

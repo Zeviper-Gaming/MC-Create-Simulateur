@@ -1,0 +1,400 @@
+{
+  "entries": {
+    "airtight_blocks": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "#aeronautics:airtight = #aeronautics:envelope + #minecraft:wool",
+      "value": [
+        "aeronautics:black_envelope",
+        "aeronautics:black_envelope_encased_shaft",
+        "aeronautics:blue_envelope",
+        "aeronautics:blue_envelope_encased_shaft",
+        "aeronautics:brown_envelope",
+        "aeronautics:brown_envelope_encased_shaft",
+        "aeronautics:cyan_envelope",
+        "aeronautics:cyan_envelope_encased_shaft",
+        "aeronautics:gray_envelope",
+        "aeronautics:gray_envelope_encased_shaft",
+        "aeronautics:green_envelope",
+        "aeronautics:green_envelope_encased_shaft",
+        "aeronautics:light_blue_envelope",
+        "aeronautics:light_blue_envelope_encased_shaft",
+        "aeronautics:light_gray_envelope",
+        "aeronautics:light_gray_envelope_encased_shaft",
+        "aeronautics:lime_envelope",
+        "aeronautics:lime_envelope_encased_shaft",
+        "aeronautics:magenta_envelope",
+        "aeronautics:magenta_envelope_encased_shaft",
+        "aeronautics:orange_envelope",
+        "aeronautics:orange_envelope_encased_shaft",
+        "aeronautics:pink_envelope",
+        "aeronautics:pink_envelope_encased_shaft",
+        "aeronautics:purple_envelope",
+        "aeronautics:purple_envelope_encased_shaft",
+        "aeronautics:red_envelope",
+        "aeronautics:red_envelope_encased_shaft",
+        "aeronautics:white_envelope",
+        "aeronautics:white_envelope_encased_shaft",
+        "aeronautics:yellow_envelope",
+        "aeronautics:yellow_envelope_encased_shaft",
+        "minecraft:black_wool",
+        "minecraft:blue_wool",
+        "minecraft:brown_wool",
+        "minecraft:cyan_wool",
+        "minecraft:gray_wool",
+        "minecraft:green_wool",
+        "minecraft:light_blue_wool",
+        "minecraft:light_gray_wool",
+        "minecraft:lime_wool",
+        "minecraft:magenta_wool",
+        "minecraft:orange_wool",
+        "minecraft:pink_wool",
+        "minecraft:purple_wool",
+        "minecraft:red_wool",
+        "minecraft:white_wool",
+        "minecraft:yellow_wool"
+      ]
+    },
+    "bedrock": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "#sable:bedrock_absurdity",
+      "value": 1000.0
+    },
+    "default": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": 1.0
+    },
+    "envelope_blocks": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "#aeronautics:envelope, priorite 1001, super_light",
+      "value": [
+        "aeronautics:black_envelope",
+        "aeronautics:black_envelope_encased_shaft",
+        "aeronautics:blue_envelope",
+        "aeronautics:blue_envelope_encased_shaft",
+        "aeronautics:brown_envelope",
+        "aeronautics:brown_envelope_encased_shaft",
+        "aeronautics:cyan_envelope",
+        "aeronautics:cyan_envelope_encased_shaft",
+        "aeronautics:gray_envelope",
+        "aeronautics:gray_envelope_encased_shaft",
+        "aeronautics:green_envelope",
+        "aeronautics:green_envelope_encased_shaft",
+        "aeronautics:light_blue_envelope",
+        "aeronautics:light_blue_envelope_encased_shaft",
+        "aeronautics:light_gray_envelope",
+        "aeronautics:light_gray_envelope_encased_shaft",
+        "aeronautics:lime_envelope",
+        "aeronautics:lime_envelope_encased_shaft",
+        "aeronautics:magenta_envelope",
+        "aeronautics:magenta_envelope_encased_shaft",
+        "aeronautics:orange_envelope",
+        "aeronautics:orange_envelope_encased_shaft",
+        "aeronautics:pink_envelope",
+        "aeronautics:pink_envelope_encased_shaft",
+        "aeronautics:purple_envelope",
+        "aeronautics:purple_envelope_encased_shaft",
+        "aeronautics:red_envelope",
+        "aeronautics:red_envelope_encased_shaft",
+        "aeronautics:white_envelope",
+        "aeronautics:white_envelope_encased_shaft",
+        "aeronautics:yellow_envelope",
+        "aeronautics:yellow_envelope_encased_shaft"
+      ]
+    },
+    "envelope_colors": {
+      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+      "source": "#aeronautics:envelope",
+      "value": [
+        "white",
+        "orange",
+        "magenta",
+        "light_blue",
+        "yellow",
+        "lime",
+        "pink",
+        "gray",
+        "light_gray",
+        "cyan",
+        "purple",
+        "blue",
+        "brown",
+        "green",
+        "red",
+        "black"
+      ]
+    },
+    "exact_light": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "create:andesite_encased_cogwheel",
+        "create:andesite_encased_large_cogwheel",
+        "create:andesite_encased_shaft",
+        "create:andesite_funnel",
+        "create:belt",
+        "create:brass_encased_cogwheel",
+        "create:brass_encased_large_cogwheel",
+        "create:brass_encased_shaft",
+        "create:brass_funnel",
+        "create:cardboard_block",
+        "create:cogwheel",
+        "create:desk_bell",
+        "create:display_link",
+        "create:factory_gauge",
+        "create:hand_crank",
+        "create:large_cogwheel",
+        "create:nixie_tube",
+        "create:piston_extension_pole",
+        "create:shaft",
+        "create:stock_link",
+        "create:track",
+        "create:turntable",
+        "minecraft:barrel",
+        "minecraft:chest",
+        "minecraft:piston_head",
+        "simulated:spring",
+        "simulated:steering_wheel"
+      ]
+    },
+    "exact_super_heavy_removed": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "note": "retires du tag super_heavy",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "create:cardboard_block",
+        "minecraft:bone_block",
+        "minecraft:copper_block",
+        "minecraft:slime_block"
+      ]
+    },
+    "exact_super_light": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "create:andesite_bars",
+        "create:andesite_ladder",
+        "create:brass_bars",
+        "create:brass_ladder",
+        "create:clipboard",
+        "create:copper_bars",
+        "create:copper_ladder",
+        "create:copycat_panel",
+        "create:copycat_step",
+        "create:redstone_link",
+        "minecraft:bamboo",
+        "minecraft:chain",
+        "minecraft:comparator",
+        "minecraft:end_rod",
+        "minecraft:flower_pot",
+        "minecraft:glass_pane",
+        "minecraft:iron_bars",
+        "minecraft:ladder",
+        "minecraft:lantern",
+        "minecraft:lightning_rod",
+        "minecraft:lily_pad",
+        "minecraft:repeater",
+        "minecraft:sea_pickle",
+        "minecraft:snow",
+        "minecraft:soul_lantern"
+      ]
+    },
+    "exact_weightless": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "create:pulley_magnet",
+        "create:rope"
+      ]
+    },
+    "flywheel": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/flywheel.json",
+      "value": 4.0
+    },
+    "heavy": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": 2.0
+    },
+    "heavy_keywords": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "stone",
+        "cobblestone",
+        "blackstone",
+        "basalt",
+        "obsidian",
+        "deepslate",
+        "granite",
+        "diorite",
+        "andesite_block",
+        "tuff",
+        "calcite",
+        "dripstone"
+      ]
+    },
+    "known_namespaces": {
+      "mod": "config/*-server.toml (instance La Bonne Compagnie)",
+      "note": "tout autre namespace est signale comme bloc hors table (F1.5)",
+      "source": "espaces de noms couverts par les tables",
+      "value": [
+        "aeronautics",
+        "create",
+        "minecraft",
+        "offroad",
+        "sable",
+        "simulated"
+      ]
+    },
+    "light": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": 0.5
+    },
+    "no_collision": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "BlockPropertiesTooltip : mass = 0 si pas de collision",
+      "value": 0.0
+    },
+    "no_collision_blocks": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "blocs sans collision, masse 0",
+      "value": [
+        "create:analog_lever",
+        "minecraft:activator_rail",
+        "minecraft:air",
+        "minecraft:cave_air",
+        "minecraft:detector_rail",
+        "minecraft:lava",
+        "minecraft:lever",
+        "minecraft:powered_rail",
+        "minecraft:rail",
+        "minecraft:redstone_torch",
+        "minecraft:redstone_wall_torch",
+        "minecraft:redstone_wire",
+        "minecraft:soul_torch",
+        "minecraft:soul_wall_torch",
+        "minecraft:torch",
+        "minecraft:tripwire",
+        "minecraft:tripwire_hook",
+        "minecraft:void_air",
+        "minecraft:wall_torch",
+        "minecraft:water",
+        "simulated:throttle_lever"
+      ]
+    },
+    "sail_blocks": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "source": "#create:windmill_sails, comptees dans totalSailPower",
+      "value": [
+        "create:black_sail",
+        "create:blue_sail",
+        "create:brown_sail",
+        "create:cyan_sail",
+        "create:gray_sail",
+        "create:green_sail",
+        "create:light_blue_sail",
+        "create:light_gray_sail",
+        "create:lime_sail",
+        "create:magenta_sail",
+        "create:orange_sail",
+        "create:pink_sail",
+        "create:purple_sail",
+        "create:red_sail",
+        "create:sail_frame",
+        "create:white_sail",
+        "create:yellow_sail",
+        "simulated:black_symmetric_sail",
+        "simulated:blue_symmetric_sail",
+        "simulated:brown_symmetric_sail",
+        "simulated:cyan_symmetric_sail",
+        "simulated:gray_symmetric_sail",
+        "simulated:green_symmetric_sail",
+        "simulated:light_blue_symmetric_sail",
+        "simulated:light_gray_symmetric_sail",
+        "simulated:lime_symmetric_sail",
+        "simulated:magenta_symmetric_sail",
+        "simulated:orange_symmetric_sail",
+        "simulated:pink_symmetric_sail",
+        "simulated:purple_symmetric_sail",
+        "simulated:red_symmetric_sail",
+        "simulated:white_symmetric_sail",
+        "simulated:yellow_symmetric_sail"
+      ]
+    },
+    "suffix_super_light": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "_fence",
+        "_fence_gate",
+        "_trapdoor",
+        "_door",
+        "_carpet",
+        "_leaves",
+        "_sapling",
+        "_candle",
+        "_wool",
+        "_glass_pane",
+        "_bars"
+      ]
+    },
+    "super_heavy": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": 4.0
+    },
+    "super_heavy_keywords": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "_block_of_",
+        "anvil",
+        "heavy_core"
+      ]
+    },
+    "super_light": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": 0.25
+    },
+    "weightless": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": 0.0
+    },
+    "wood_keywords": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "note": "escaliers et dalles en bois : super_light",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "oak",
+        "spruce",
+        "birch",
+        "jungle",
+        "acacia",
+        "cherry",
+        "mangrove",
+        "bamboo",
+        "crimson",
+        "warped",
+        "pale_oak"
+      ]
+    },
+    "wood_suffixes": {
+      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+      "source": "data/sable/physics_block_properties/*.json + BlockPropertiesTooltip.getMassComponent()",
+      "value": [
+        "_planks",
+        "_log",
+        "_wood",
+        "_stem",
+        "_hyphae"
+      ]
+    }
+  },
+  "name": "masses",
+  "schema": 1
+}

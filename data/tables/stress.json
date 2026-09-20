@@ -1,0 +1,91 @@
+{
+  "entries": {
+    "aggregation": {
+      "mod": "create-1.21.1-6.0.10.jar",
+      "note": "un bloc absent des tables a un impact et une capacite nuls",
+      "source": "Create KineticNetwork",
+      "value": {
+        "capacite_reseau": "somme(sources) capacity x |vitesse_generee|",
+        "stress_reseau": "somme(membres) impact x |vitesse|",
+        "surcharge": "stress > capacite"
+      }
+    },
+    "capacity": {
+      "mod": "config/*-server.toml (instance La Bonne Compagnie)",
+      "source": "create-server.toml, aeronautics-server.toml, simulated-server.toml, offroad-server.toml [kinetics.stressValues.v2] .capacity",
+      "value": {
+        "create:copper_valve_handle": 8.0,
+        "create:creative_motor": 16384.0,
+        "create:hand_crank": 8.0,
+        "create:large_water_wheel": 128.0,
+        "create:steam_engine": 1024.0,
+        "create:water_wheel": 32.0,
+        "create:windmill_bearing": 512.0,
+        "simulated:black_portable_engine": 64.0,
+        "simulated:blue_portable_engine": 64.0,
+        "simulated:brown_portable_engine": 64.0,
+        "simulated:cyan_portable_engine": 64.0,
+        "simulated:gray_portable_engine": 64.0,
+        "simulated:green_portable_engine": 64.0,
+        "simulated:light_blue_portable_engine": 64.0,
+        "simulated:light_gray_portable_engine": 64.0,
+        "simulated:lime_portable_engine": 64.0,
+        "simulated:magenta_portable_engine": 64.0,
+        "simulated:orange_portable_engine": 64.0,
+        "simulated:pink_portable_engine": 64.0,
+        "simulated:purple_portable_engine": 64.0,
+        "simulated:red_portable_engine": 64.0,
+        "simulated:steering_wheel": 16.0,
+        "simulated:torsion_spring": 8.0,
+        "simulated:white_portable_engine": 64.0,
+        "simulated:yellow_portable_engine": 64.0
+      }
+    },
+    "impact": {
+      "mod": "config/*-server.toml (instance La Bonne Compagnie)",
+      "source": "create-server.toml, aeronautics-server.toml, simulated-server.toml, offroad-server.toml [kinetics.stressValues.v2] .impact",
+      "value": {
+        "aeronautics:andesite_propeller": 4.0,
+        "aeronautics:gyroscopic_propeller_bearing": 2.0,
+        "aeronautics:mounted_potato_cannon": 2.0,
+        "aeronautics:propeller_bearing": 2.0,
+        "aeronautics:smart_propeller": 4.0,
+        "aeronautics:wooden_propeller": 4.0,
+        "create:chain_conveyor": 1.0,
+        "create:clockwork_bearing": 4.0,
+        "create:copper_backtank": 4.0,
+        "create:crushing_wheel": 8.0,
+        "create:cuckoo_clock": 1.0,
+        "create:deployer": 4.0,
+        "create:elevator_pulley": 4.0,
+        "create:encased_fan": 2.0,
+        "create:hose_pulley": 4.0,
+        "create:mechanical_arm": 2.0,
+        "create:mechanical_bearing": 4.0,
+        "create:mechanical_crafter": 2.0,
+        "create:mechanical_drill": 4.0,
+        "create:mechanical_mixer": 4.0,
+        "create:mechanical_piston": 4.0,
+        "create:mechanical_press": 8.0,
+        "create:mechanical_pump": 4.0,
+        "create:mechanical_saw": 4.0,
+        "create:millstone": 4.0,
+        "create:mysterious_cuckoo_clock": 1.0,
+        "create:netherite_backtank": 4.0,
+        "create:rope_pulley": 4.0,
+        "create:sticky_mechanical_piston": 4.0,
+        "create:turntable": 4.0,
+        "create:weighted_ejector": 2.0,
+        "offroad:borehead_bearing": 8.0,
+        "offroad:wheel_mount": 16.0,
+        "simulated:auger_cog": 0.5,
+        "simulated:auger_shaft": 0.5,
+        "simulated:rope_winch": 4.0,
+        "simulated:swivel_bearing": 4.0,
+        "simulated:torsion_spring": 16.0
+      }
+    }
+  },
+  "name": "stress",
+  "schema": 1
+}
