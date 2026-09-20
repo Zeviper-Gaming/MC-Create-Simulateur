@@ -76,6 +76,25 @@ void main() {
 """
 
 
+# Le meme eclairage, sans la grille des blocs : une fleche n'est pas un volume
+# de blocs, et un quadrillage dessus la rendrait illisible. L'opacite est une
+# constante du shader plutot qu'un uniforme, pour la meme raison que l'ambiante.
+OVERLAY_FRAGMENT = """
+#version 330 core
+in vec3 v_normal;
+in vec3 v_color;
+in vec3 v_world;
+out vec4 frag_color;
+const vec3  LIGHT   = normalize(vec3(0.42, 0.80, 0.43));
+const float AMBIENT = 0.62;
+const float ALPHA   = %.2f;
+void main() {
+    float lambert = max(dot(normalize(v_normal), LIGHT), 0.0);
+    frag_color = vec4(v_color * (AMBIENT + (1.0 - AMBIENT) * lambert), ALPHA);
+}
+"""
+
+
 class OrbitCamera:
     """Orbite, panoramique, zoom, et les vues normalisees du cahier (F3.2)."""
 
@@ -187,63 +206,139 @@ class OrbitCamera:
         return projection * view
 
 
-class CubeView(QOpenGLWidget):
-    """Affiche un maillage deja construit. Ne calcule aucune physique."""
+# Constantes OpenGL utilisees, nommees pour que le code reste lisible sans
+# avoir PyOpenGL en dependance.
+GL_DEPTH_TEST = 0x0B71
+GL_CULL_FACE = 0x0B44
+GL_BLEND = 0x0BE2
+GL_TRIANGLES = 0x0004
+GL_FLOAT = 0x1406
+GL_SRC_ALPHA = 0x0302
+GL_ONE_MINUS_SRC_ALPHA = 0x0303
+GL_COLOR_BUFFER_BIT = 0x4000
+GL_DEPTH_BUFFER_BIT = 0x0100
 
-    fps_measured = QtCore.Signal(float)
 
-    def __init__(self, mesh: Mesh, parent=None, background=(0.09, 0.10, 0.12)):
-        super().__init__(parent)
-        self.mesh = mesh
-        self.background = background
-        self.camera = OrbitCamera(mesh.centre, mesh.radius,
-                                  mesh.positions.reshape(-1, 3))
-        self._fitted = False
-        self.program: QtOpenGL.QOpenGLShaderProgram | None = None
+class _Batch:
+    """Un jeu de sommets sur le GPU : position, normale, couleur."""
+
+    def __init__(self, positions, normals, colors):
+        self.count = positions.size // 3
+        self._data = (positions, normals, colors)
         self.vao: QtOpenGL.QOpenGLVertexArrayObject | None = None
         self.buffers: list[QtOpenGL.QOpenGLBuffer] = []
-        self.uniforms: dict[str, int] = {}
-        self._last_pos = None
-        self._frames = 0
-        self._t0 = time.perf_counter()
-        self.fps = 0.0
-        self.setMinimumSize(320, 240)
 
-    # -- cycle OpenGL ------------------------------------------------------
-    def initializeGL(self) -> None:
-        gl = QtGui.QOpenGLContext.currentContext().functions()
-        gl.glClearColor(*self.background, 1.0)
-        gl.glEnable(0x0B71)          # GL_DEPTH_TEST
-        gl.glEnable(0x0B44)          # GL_CULL_FACE
-
-        self.program = QtOpenGL.QOpenGLShaderProgram()
-        self.program.addShaderFromSourceCode(
-            QtOpenGL.QOpenGLShader.ShaderTypeBit.Vertex, VERTEX_SHADER)
-        self.program.addShaderFromSourceCode(
-            QtOpenGL.QOpenGLShader.ShaderTypeBit.Fragment, FRAGMENT_SHADER)
-        if not self.program.link():
-            raise RuntimeError("shader non lie : " + self.program.log())
-        # PySide6 n'expose `setUniformValue` que par emplacement entier :
-        # on resout les noms une fois pour toutes, apres l'edition de liens.
-        self.program.bind()
-        self.uniforms = {name: self.program.uniformLocation(name)
-                         for name in ("mvp",)}
-        self.program.release()
-
+    def upload(self, program) -> None:
+        if not self.count:
+            return
         self.vao = QtOpenGL.QOpenGLVertexArrayObject()
         self.vao.create()
         self.vao.bind()
-        for index, data in enumerate((self.mesh.positions, self.mesh.normals,
-                                      self.mesh.colors)):
+        for index, data in enumerate(self._data):
             buffer = QtOpenGL.QOpenGLBuffer(QtOpenGL.QOpenGLBuffer.Type.VertexBuffer)
             buffer.create()
             buffer.bind()
             buffer.setUsagePattern(QtOpenGL.QOpenGLBuffer.UsagePattern.StaticDraw)
             buffer.allocate(data.tobytes(), int(data.nbytes))
-            self.program.enableAttributeArray(index)
-            self.program.setAttributeBuffer(index, 0x1406, 0, 3)   # GL_FLOAT
+            program.enableAttributeArray(index)
+            program.setAttributeBuffer(index, GL_FLOAT, 0, 3)
             self.buffers.append(buffer)
         self.vao.release()
+        self._data = ()
+
+    def draw(self, gl, first: int = 0, count: int | None = None) -> None:
+        if not self.count or self.vao is None:
+            return
+        self.vao.bind()
+        gl.glDrawArrays(GL_TRIANGLES, first, self.count if count is None else count)
+        self.vao.release()
+
+
+class CubeView(QOpenGLWidget):
+    """Affiche un maillage deja construit. Ne calcule aucune physique."""
+
+    fps_measured = QtCore.Signal(float)
+    groups_changed = QtCore.Signal()
+    layer_changed = QtCore.Signal(str)
+
+    def __init__(self, mesh: Mesh, overlay=None, volumes=None, kinetic=None,
+                 parent=None, background=(0.09, 0.10, 0.12)):
+        super().__init__(parent)
+        self.mesh = mesh
+        self.kinetic = kinetic
+        self.block_layer = "blocs"
+        self.overlay = overlay
+        self.volumes = list(volumes or [])
+        self.background = background
+        # Le cadrage englobe AUSSI les fleches : une force qui sort du cadre
+        # ne se compare a rien, et c'est justement la comparaison qui repond
+        # aux questions du cahier.
+        framed = [mesh.positions.reshape(-1, 3)]
+        if overlay is not None and overlay.vertices:
+            framed.append(overlay.positions.reshape(-1, 3))
+        self.camera = OrbitCamera(mesh.centre, mesh.radius,
+                                  np.concatenate(framed))
+        self._fitted = False
+        self.visible_groups: set[str] = set(
+            overlay.ranges if overlay is not None else ())
+        self.show_volumes = True
+        self.programs: dict[str, QtOpenGL.QOpenGLShaderProgram] = {}
+        self.uniforms: dict[str, dict[str, int]] = {}
+        self.batches: dict[str, _Batch] = {}
+        self._last_pos = None
+        self._frames = 0
+        self._t0 = time.perf_counter()
+        self.fps = 0.0
+        self.setMinimumSize(320, 240)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+
+    # -- cycle OpenGL ------------------------------------------------------
+    def initializeGL(self) -> None:
+        gl = QtGui.QOpenGLContext.currentContext().functions()
+        gl.glClearColor(*self.background, 1.0)
+        gl.glEnable(GL_DEPTH_TEST)
+        gl.glEnable(GL_CULL_FACE)
+        gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+        self._make_program("blocs", FRAGMENT_SHADER)
+        self._make_program("surimpression", OVERLAY_FRAGMENT % 1.0)
+        self._make_program("fantome", OVERLAY_FRAGMENT % 0.30)
+        self._make_program("volume", OVERLAY_FRAGMENT % 0.26)
+
+        self.batches["blocs"] = _Batch(self.mesh.positions, self.mesh.normals,
+                                       self.mesh.colors)
+        self.batches["blocs"].upload(self.programs["blocs"])
+        if self.kinetic is not None and self.kinetic.vertices:
+            batch = _Batch(self.kinetic.positions, self.kinetic.normals,
+                           self.kinetic.colors)
+            batch.upload(self.programs["blocs"])
+            self.batches["cinetique"] = batch
+        if self.overlay is not None and self.overlay.vertices:
+            batch = _Batch(self.overlay.positions, self.overlay.normals,
+                           self.overlay.colors)
+            batch.upload(self.programs["surimpression"])
+            self.batches["surimpression"] = batch
+        for index, (volume, _label) in enumerate(self.volumes):
+            if not volume.vertices:
+                continue
+            batch = _Batch(volume.positions, volume.normals, volume.colors)
+            batch.upload(self.programs["volume"])
+            self.batches["volume%d" % index] = batch
+
+    def _make_program(self, name: str, fragment: str) -> None:
+        program = QtOpenGL.QOpenGLShaderProgram()
+        program.addShaderFromSourceCode(
+            QtOpenGL.QOpenGLShader.ShaderTypeBit.Vertex, VERTEX_SHADER)
+        program.addShaderFromSourceCode(
+            QtOpenGL.QOpenGLShader.ShaderTypeBit.Fragment, fragment)
+        if not program.link():
+            raise RuntimeError("shader %s non lie : %s" % (name, program.log()))
+        # PySide6 n'expose `setUniformValue` que par emplacement entier : on
+        # resout les noms une fois pour toutes, apres l'edition de liens.
+        program.bind()
+        self.uniforms[name] = {"mvp": program.uniformLocation("mvp")}
+        program.release()
+        self.programs[name] = program
 
     def resizeGL(self, w: int, h: int) -> None:
         QtGui.QOpenGLContext.currentContext().functions().glViewport(0, 0, w, h)
@@ -253,18 +348,76 @@ class CubeView(QOpenGLWidget):
 
     def paintGL(self) -> None:
         gl = QtGui.QOpenGLContext.currentContext().functions()
-        gl.glClear(0x00004000 | 0x00000100)   # COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT
-        if self.program is None or not self.mesh.vertices:
+        gl.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        if not self.programs:
             return
-        self.program.bind()
-        self.vao.bind()
-        aspect = self.width() / max(1, self.height())
-        self.program.setUniformValue(self.uniforms["mvp"],
-                                     self.camera.matrix(aspect))
-        gl.glDrawArrays(0x0004, 0, self.mesh.vertices)   # GL_TRIANGLES
-        self.vao.release()
-        self.program.release()
+        matrix = self.camera.matrix(self.width() / max(1, self.height()))
+
+        # 1. les blocs, opaques
+        gl.glEnable(GL_DEPTH_TEST)
+        gl.glEnable(GL_CULL_FACE)
+        gl.glDisable(GL_BLEND)
+        self._draw(self.block_layer, "blocs", gl, matrix)
+
+        # 2. les volumes de gaz, transparents : on les lit a travers, donc ni
+        #    ecriture de profondeur ni elimination des faces arriere.
+        if self.show_volumes:
+            # Le gaz occupe les cellules VIDES a l'interieur de l'enveloppe :
+            # teste en profondeur, il serait integralement cache par elle. On
+            # le dessine donc en transparence par-dessus, comme une radio.
+            gl.glEnable(GL_BLEND)
+            gl.glDisable(GL_CULL_FACE)
+            gl.glDisable(GL_DEPTH_TEST)
+            gl.glDepthMask(False)
+            for index in range(len(self.volumes)):
+                self._draw("volume%d" % index, "volume", gl, matrix)
+            gl.glEnable(GL_DEPTH_TEST)
+            gl.glDepthMask(True)
+
+        # 3. les forces. Deux passes : une fantome sans test de profondeur, qui
+        #    montre ce que la coque cache, puis une pleine par-dessus. Sans la
+        #    premiere, un centre de masse a l'interieur du vaisseau serait
+        #    invisible ; sans la seconde, on perdrait toute notion de profondeur.
+        if "surimpression" in self.batches:
+            gl.glEnable(GL_BLEND)
+            gl.glDisable(GL_CULL_FACE)
+            gl.glDisable(GL_DEPTH_TEST)
+            gl.glDepthMask(False)
+            self._draw_overlay("fantome", gl, matrix)
+            gl.glEnable(GL_DEPTH_TEST)
+            gl.glDepthMask(True)
+            gl.glDisable(GL_BLEND)
+            self._draw_overlay("surimpression", gl, matrix)
+            gl.glEnable(GL_CULL_FACE)
         self._tick_fps()
+
+    def _draw(self, batch_name: str, program_name: str, gl, matrix) -> None:
+        batch = self.batches.get(batch_name)
+        if batch is None:
+            return
+        program = self.programs[program_name]
+        program.bind()
+        program.setUniformValue(self.uniforms[program_name]["mvp"], matrix)
+        batch.draw(gl)
+        program.release()
+
+    def _draw_overlay(self, program_name: str, gl, matrix) -> None:
+        """Ne dessine que les groupes de forces retenus par le filtre (F3.10)."""
+        batch = self.batches["surimpression"]
+        program = self.programs[program_name]
+        program.bind()
+        program.setUniformValue(self.uniforms[program_name]["mvp"], matrix)
+        for group, (first, count) in self.overlay.ranges.items():
+            if group in self.visible_groups:
+                batch.draw(gl, first, count)
+        program.release()
+
+    def toggle_group(self, group: str) -> None:
+        if group in self.visible_groups:
+            self.visible_groups.discard(group)
+        else:
+            self.visible_groups.add(group)
+        self.update()
 
     def _tick_fps(self) -> None:
         self._frames += 1
@@ -299,16 +452,43 @@ class CubeView(QOpenGLWidget):
         self.update()
 
     def keyPressEvent(self, event) -> None:
-        views = {QtCore.Qt.Key.Key_1: "avant", QtCore.Qt.Key.Key_2: "cote",
-                 QtCore.Qt.Key.Key_3: "dessus", QtCore.Qt.Key.Key_4: "arriere",
-                 QtCore.Qt.Key.Key_0: "isometrique"}
-        name = views.get(event.key())
-        if name:
-            self.camera.look(name)
+        key = event.key()
+        views = {QtCore.Qt.Key.Key_A: "avant", QtCore.Qt.Key.Key_C: "cote",
+                 QtCore.Qt.Key.Key_H: "dessus", QtCore.Qt.Key.Key_P: "arriere",
+                 QtCore.Qt.Key.Key_I: "isometrique"}
+        if key in views:
+            self.camera.look(views[key])
             self.camera.fit(self.width() / max(1, self.height()))
             self.update()
-        else:
-            super().keyPressEvent(event)
+            return
+        if key == QtCore.Qt.Key.Key_R:
+            self.camera.auto_orient(self.width() / max(1, self.height()))
+            self.update()
+            return
+        if key == QtCore.Qt.Key.Key_K and "cinetique" in self.batches:
+            self.block_layer = ("cinetique" if self.block_layer == "blocs"
+                                else "blocs")
+            self.layer_changed.emit(self.block_layer)
+            self.update()
+            return
+        if key == QtCore.Qt.Key.Key_B:
+            self.show_volumes = not self.show_volumes
+            self.update()
+            return
+        if key == QtCore.Qt.Key.Key_F and self.overlay is not None:
+            everything = set(self.overlay.ranges)
+            self.visible_groups = set() if self.visible_groups else everything
+            self.groups_changed.emit()
+            self.update()
+            return
+        if self.overlay is not None and QtCore.Qt.Key.Key_1 <= key <= QtCore.Qt.Key.Key_9:
+            index = key - QtCore.Qt.Key.Key_1
+            groups = list(self.overlay.legend)
+            if index < len(groups):
+                self.toggle_group(groups[index]["groupe"])
+                self.groups_changed.emit()
+            return
+        super().keyPressEvent(event)
 
 
 def default_format() -> QtGui.QSurfaceFormat:

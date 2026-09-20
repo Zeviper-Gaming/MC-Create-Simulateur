@@ -8,11 +8,10 @@ monde, sans serveur.
 Le but n'est pas de montrer *ce que* le véhicule fait, mais **quelle force en est
 responsable**. En jeu, on voit le résultat et jamais la décomposition.
 
-> **État : lot L0 livré** — le noyau physique, sans interface, en ligne de commande.
-> Les deux niveaux de validation automatiques passent, ce qui est le critère de
-> livrabilité du lot. Le widget 3D de L1 est éprouvé séparément (voir plus bas) :
-> le risque technique n°1 du projet est levé. Restent à écrire l'affichage des
-> forces (L1) et le bandeau de contrôle (L2).
+> **État : lots L0 et L1 livrés.** L0 est le noyau physique, sans interface, dont les
+> deux niveaux de validation automatiques passent — c'est le critère de livrabilité.
+> L1 est la fenêtre 3D en lecture seule : les blocs, les centres, et les forces à
+> l'état initial. Reste le bandeau de contrôle et la boucle temps réel (L2).
 
 ---
 
@@ -59,8 +58,21 @@ pip install PySide6
 createsim voir mon_vaisseau.nbt
 ```
 
-Fenêtre 3D des blocs, colorés par famille. Clic gauche pour orbiter, molette pour
-zoomer, clic droit pour translater, touches `1`–`4` et `0` pour les vues normalisées.
+La fenêtre de L1 : le véhicule **et les forces qui s'exercent dessus**. Chaque force
+est dessinée à son point d'application, avec une longueur proportionnelle à son
+intensité ; la résultante et le couple net sont distincts ; les centres de masse et de
+portance sont matérialisés, avec le bras de levier entre eux.
+
+| Touche | Effet |
+|---|---|
+| souris | clic gauche orbite, molette zoome, clic droit translate |
+| `1`–`9` | montre ou masque une famille de force |
+| `F` | toutes les forces |
+| `B` | volume de gaz des poches, teinté par remplissage |
+| `K` | réseau cinétique en surbrillance, teinté par régime |
+| `A` `C` `H` `P` `I` | avant, côté, dessus, arrière, isométrique |
+| `R` | recadrer automatiquement |
+
 `--bench 5` mesure la cadence pendant cinq secondes puis sort.
 
 ## Ce que le logiciel ne fait pas
@@ -244,6 +256,51 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
+
+## L1 : la décomposition des forces
+
+La fenêtre montre le véhicule **et les forces qui s'exercent dessus**. La seconde
+partie est la raison d'être du logiciel : en jeu on voit le résultat, jamais la
+décomposition.
+
+| Réf. | Exigence | État |
+|---|---|---|
+| F3.1 | blocs en volumes colorés par famille | ✅ |
+| F3.2 | caméra libre, vues normalisées | ✅ |
+| F3.6 | un vecteur par force, à son point d'application, longueur ∝ intensité | ✅ |
+| F3.7 | code couleur par famille, légende chiffrée | ✅ |
+| F3.8 | résultante et couple net, distincts des forces élémentaires | ✅ |
+| F3.9 | centres de masse et de portance, bras de levier entre eux | ✅ |
+| F3.10 | filtre d'affichage par famille de force | ✅ |
+| F3.11 | volume des poches en transparence, teinté par remplissage | ✅ |
+| F3.12 | surbrillance du réseau cinétique, teinté par régime | ✅ |
+| F3.4 | attitude réelle appliquée au rendu | déséquilibre **statique** seul, comme décidé |
+| F3.3 F3.5 | coupe par plan mobile, textures du jeu | L6 |
+
+Trois choix méritent d'être dits.
+
+**Les forces se dessinent en deux passes.** Une passe fantôme sans test de profondeur
+montre ce que la coque cache, puis une passe pleine par-dessus. Sans la première, un
+centre de masse situé à l'intérieur du vaisseau serait purement invisible ; sans la
+seconde, on perdrait toute notion de profondeur.
+
+**Un couple n'est pas une force**, donc il n'est pas dessiné comme une flèche : c'est
+un arc fléché autour de son axe, qui se lit comme une rotation sans avoir à consulter
+la légende.
+
+**L'échelle est rapportée à la taille du véhicule.** La plus grande force occupe une
+fraction fixe de la plus grande dimension, et toutes les autres suivent
+proportionnellement. Un vaisseau de 20 blocs et un de 200 se lisent donc pareil, et
+la légende donne la conversion — « 1 bloc = 2 737 ». Une force sous un demi-pour-cent
+de la plus grande n'est pas dessinée, mais reste comptée dans la légende.
+
+### Un défaut de fond corrigé au passage
+
+Le calculateur statique supposait que **l'axe longitudinal était x**. Or `cargo_airship`
+mesure 34 × 38 × 67 et `c1_air_cruiser` 31 × 37 × 176 : leur longueur est en **z**. Le
+rapport confondait donc tangage et roulis, et annonçait un bras de levier de −0,04 là
+où le vrai vaut 2,09. L'axe se déduit désormais des dimensions, et le rapport nomme
+celui qu'il a retenu.
 
 ## Ce qui manquait au solveur cinétique
 

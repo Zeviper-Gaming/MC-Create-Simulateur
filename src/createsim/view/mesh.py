@@ -21,6 +21,7 @@ que le reste de l'interface existe.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -156,6 +157,24 @@ def _greedy_rectangles(plane: np.ndarray) -> list[tuple[int, int, int, int, int]
 def build_mesh(structure, family_at) -> Mesh:
     """Construit le maillage complet d'une structure."""
     grid, size = family_grid(structure, family_at)
+    return build_from_grid(grid, size)
+
+
+def build_cells_mesh(cells, size, color) -> Mesh:
+    """Maille un simple ensemble de cellules, d'une seule couleur.
+
+    Sert aux volumes qui ne sont pas des blocs : le gaz d'une poche de ballon
+    occupe des cellules vides, et c'est pourtant un volume a montrer.
+    """
+    grid = np.full(tuple(int(v) for v in size), -1, dtype=np.int8)
+    for pos in cells:
+        if all(0 <= pos[i] < size[i] for i in range(3)):
+            grid[pos] = 0
+    return build_from_grid(grid, size, palette=np.array([color], np.float32))
+
+
+def build_from_grid(grid: np.ndarray, size, palette=None) -> Mesh:
+    """Le maillage glouton proprement dit, a partir d'une grille d'index."""
     blocks = int((grid >= 0).sum())
     if blocks == 0:
         return Mesh()
@@ -166,7 +185,8 @@ def build_mesh(structure, family_at) -> Mesh:
     quads = 0
     raw_faces = 0
 
-    palette = np.array([COLORS[name] for name in FAMILIES], dtype=np.float32)
+    if palette is None:
+        palette = np.array([COLORS[name] for name in FAMILIES], dtype=np.float32)
 
     for axis, sign in FACES:
         exposed = _exposed(grid, axis, sign)
@@ -252,3 +272,47 @@ def families_from_model(model):
         return "structure"
 
     return family_at
+
+
+# ---------------------------------------------------------------------------
+# Surbrillance du reseau cinetique (F3.12)
+# ---------------------------------------------------------------------------
+RPM_RAMP = (
+    (0.30, 0.34, 0.40),   # a l'arret : gris, en retrait
+    (0.30, 0.55, 0.95),   # lent
+    (0.35, 0.85, 0.65),
+    (0.95, 0.85, 0.30),
+    (1.00, 0.55, 0.25),
+    (1.00, 0.30, 0.30),   # au plafond de rotation
+)
+MUTED = (0.26, 0.27, 0.30)
+
+
+def build_kinetic_mesh(structure, model, speeds, ceiling: float = 256.0) -> Mesh:
+    """Le vaisseau en retrait, son reseau cinetique teinte par regime.
+
+    Repond a « qu'est-ce qui tourne, et a quelle vitesse ? » sans ouvrir un
+    tableau : un arbre rouge a cote d'un arbre bleu, c'est un rapport de
+    demultiplication qu'on voit au lieu de le lire.
+    """
+    size = tuple(int(v) for v in structure.size)
+    grid = np.full(size, -1, dtype=np.int8)
+    kinetic = model.organ("cinetique").nodes
+    for pos in structure.blocks:
+        if structure.is_air(pos) or not all(0 <= pos[i] < size[i] for i in range(3)):
+            continue
+        if pos in kinetic:
+            rpm = abs(speeds.get(pos, 0.0))
+            if rpm <= 1e-9:
+                index = 1
+            else:
+                # echelle logarithmique : les regimes utiles s'etalent de 4 a
+                # 256 tr/min, une echelle lineaire ecraserait tout en bas
+                ratio = math.log1p(rpm) / math.log1p(ceiling)
+                step = min(len(RPM_RAMP) - 2, int(ratio * (len(RPM_RAMP) - 1)))
+                index = 2 + step
+        else:
+            index = 0
+        grid[pos] = index
+    palette = np.array((MUTED,) + RPM_RAMP, dtype=np.float32)
+    return build_from_grid(grid, size, palette=palette)

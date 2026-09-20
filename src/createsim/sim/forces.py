@@ -215,24 +215,52 @@ def torque_about(forces: list[Force], pivot: Vec,
     return (tx, ty, tz)
 
 
-def pitch_balance(mass: float, com: Vec, lift_forces: list[Force],
-                  tables) -> dict | None:
+def lift_centre(forces: list[Force]) -> Vec | None:
+    """Centre de portance : barycentre des forces vers le haut, pondere.
+
+    C'est le point que le cahier demande de materialiser face au centre de
+    masse (F3.9) : l'ecart entre les deux est le bras de levier, et c'est lui
+    qui explique pourquoi un vaisseau pique du nez.
+    """
+    total = sum(f.vector[1] for f in forces if f.vector[1] > 0.0)
+    if total <= 0.0:
+        return None
+    return tuple(
+        sum(f.vector[1] * f.point[i] for f in forces if f.vector[1] > 0.0) / total
+        for i in range(3))
+
+
+def longitudinal_axis(size) -> int:
+    """L'axe le plus long dans le plan horizontal : la longueur du vehicule.
+
+    Sans cela le tangage et le roulis se confondent. Le calculateur statique
+    supposait l'axe x, or `cargo_airship` mesure 34 x 38 x 67 et `c1_air_cruiser`
+    31 x 37 x 176 : leur longueur est en z, et c'est un ecart de portance le
+    long de CETTE direction qui fait piquer du nez.
+    """
+    return 0 if float(size[0]) >= float(size[2]) else 2
+
+
+def pitch_balance(mass: float, com: Vec, lift_forces: list[Force], tables,
+                  longitudinal: int = 2) -> dict | None:
     """Desequilibre STATIQUE : ecart entre centre de portance et centre de masse.
 
     Repond deja a « ca pique du nez ? » sans simuler la rotation. Le tangage
     complet, avec le tenseur d'inertie, est un lot ulterieur.
     """
-    total = sum(f.vector[1] for f in lift_forces if f.vector[1] > 0)
+    lifting = [f for f in lift_forces if f.vector[1] > 0]
+    total = sum(f.vector[1] for f in lifting)
     if total <= 0:
         return None
-    cx = sum(f.vector[1] * f.point[0] for f in lift_forces if f.vector[1] > 0) / total
-    cz = sum(f.vector[1] * f.point[2] for f in lift_forces if f.vector[1] > 0) / total
-    arm = cx - com[0]
+    centre = [sum(f.vector[1] * f.point[i] for f in lifting) / total
+              for i in range(3)]
+    lateral = 2 if longitudinal == 0 else 0
+    arm = centre[longitudinal] - com[longitudinal]
     return {
-        "centre_de_portance_x": round(cx, 2),
-        "centre_de_portance_z": round(cz, 2),
+        "axe_longitudinal": "xyz"[longitudinal],
+        "centre_de_portance": [round(v, 2) for v in centre],
         "bras_longitudinal": round(arm, 2),
-        "bras_lateral": round(cz - com[2], 2),
+        "bras_lateral": round(centre[lateral] - com[lateral], 2),
         "couple_longitudinal": round(arm * total, 1),
         "sens": "cabre" if arm > 0.01 else ("pique" if arm < -0.01 else "neutre"),
     }

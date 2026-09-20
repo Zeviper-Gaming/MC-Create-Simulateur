@@ -245,7 +245,9 @@ class Simulation:
             "altitude_equilibre": _round(self.equilibrium_altitude(), 1),
             "poussee_actuelle": round(thrust, 1),
             "traction_roues": round(traction, 1),
-            "tangage": F.pitch_balance(m.total, m.com, lift_forces, t),
+            "tangage": F.pitch_balance(
+                m.total, m.com, lift_forces, t,
+                F.longitudinal_axis(structure.size)),
         }
         total_push = thrust + traction
         rep["mouvement"] = (terminal_motion(total_push, self.drag.coefficient(1.0),
