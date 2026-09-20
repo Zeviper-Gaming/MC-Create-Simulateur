@@ -192,8 +192,17 @@ def build_mesh(structure, family_at) -> Mesh:
                     point[u_axis] = float(u + cu * h)
                     point[v_axis] = float(v + cv * w)
                     corners.append(point)
-                # deux triangles, enroulement selon le sens de la normale
-                order = ((0, 1, 2), (0, 2, 3)) if sign > 0 else ((0, 2, 1), (0, 3, 2))
+                # Deux triangles, enroules pour que la normale geometrique
+                # coincide avec la normale annoncee.
+                #
+                # Piege : apres `np.take`, les deux axes restants gardent leur
+                # ordre d'origine, soit (x, z) pour l'axe y. Ce reperage est
+                # GAUCHER par rapport a +y, alors qu'il est droitier pour x et
+                # pour z. Sans la correction, toutes les faces horizontales
+                # sortaient enroulees a l'envers et le back-face culling les
+                # eliminait : on voyait a travers chaque pont et chaque toit.
+                reverse = (axis == 1) != (sign < 0)
+                order = ((0, 2, 1), (0, 3, 2)) if reverse else ((0, 1, 2), (0, 2, 3))
                 tri = np.array([corners[i] for triangle in order for i in triangle],
                                dtype=np.float32)
                 positions.append(tri)

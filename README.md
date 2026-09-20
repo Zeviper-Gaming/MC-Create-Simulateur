@@ -219,6 +219,24 @@ Les **faces internes n'existent pas** : une face n'est émise que si le voisin d
 direction est vide. Les **faces coplanaires de même famille fusionnent** en rectangles
 maximaux. Et tout part en **un seul tampon, dessiné en un seul appel**.
 
+Trois choses rendent le résultat lisible, et chacune répare un défaut réel.
+
+**L'enroulement des triangles suit la normale annoncée.** Après `np.take`, les deux
+axes restants gardent leur ordre d'origine, soit `(x, z)` pour l'axe y — un repère
+*gaucher* par rapport à `+y`. Toutes les faces horizontales sortaient donc enroulées à
+l'envers, le *back-face culling* les éliminait, et on voyait à travers chaque pont et
+chaque toit. Un test compare désormais la normale géométrique de chacun des 27 658
+triangles à celle qu'il déclare.
+
+**La grille des blocs est restituée dans le shader.** La fusion gloutonne efface les
+arêtes : sans elles, une coque de trente blocs n'est plus qu'un aplat et l'échelle se
+perd. Le trait est tracé par dérivées d'écran, donc antialiasé, et s'efface quand un
+bloc couvre moins de deux pixels — sinon la grille moire au loin. Coût géométrique nul.
+
+**Le cadrage s'ajuste sur les sommets, pas sur la boîte englobante**, et la caméra
+choisit l'azimut qui remplit le mieux l'image. Une coque de 176 blocs de long posée en
+diagonale n'occupait que le tiers de la largeur ; elle en occupe maintenant l'essentiel.
+
 Le maillage vit dans `view/mesh.py`, qui ne connaît ni Qt ni OpenGL et se teste sans
 fenêtre — c'est ce qui a permis de mesurer le poste coûteux avant d'écrire la moindre
 ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.

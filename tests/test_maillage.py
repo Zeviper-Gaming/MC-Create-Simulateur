@@ -83,6 +83,47 @@ def test_une_structure_vide_ne_casse_pas():
     assert mesh.stats()["triangles"] == 0
 
 
+def _windings(mesh):
+    """Normale geometrique de chaque triangle, comparee a celle annoncee."""
+    points = mesh.positions.reshape(-1, 3)
+    normals = mesh.normals.reshape(-1, 3)[0::3]
+    v0, v1, v2 = points[0::3], points[1::3], points[2::3]
+    geometric = np.cross(v1 - v0, v2 - v0)
+    lengths = np.linalg.norm(geometric, axis=1, keepdims=True)
+    geometric = np.divide(geometric, lengths, out=np.zeros_like(geometric),
+                          where=lengths > 1e-9)
+    return int((~np.isclose(geometric, normals, atol=1e-4).all(axis=1)).sum())
+
+
+def test_l_enroulement_suit_la_normale_annoncee():
+    """Le bug qui faisait voir a travers les ponts.
+
+    Apres `np.take`, les deux axes restants gardent leur ordre d'origine, soit
+    (x, z) pour l'axe y — un reperage GAUCHER par rapport a +y. Les faces
+    horizontales sortaient donc enroulees a l'envers, le back-face culling les
+    eliminait, et toutes les surfaces horizontales devenaient transparentes.
+
+    Le test est muet a l'oeil nu mais sans appel : une normale geometrique
+    opposee a la normale annoncee est un trou dans la coque.
+    """
+    for size in ((1, 1, 1), (3, 3, 3), (5, 2, 7), (1, 8, 1)):
+        mesh = build_mesh(_solid(size), _structure_family)
+        assert _windings(mesh) == 0, "enroulement inverse sur %s" % (size,)
+
+
+def test_l_enroulement_tient_sur_un_vaisseau_reel(cargo):
+    mesh = build_mesh(cargo.structure, families_from_model(cargo))
+    assert _windings(mesh) == 0
+
+
+def test_chaque_direction_de_face_est_representee():
+    """Six directions, six normales distinctes : aucune ne doit manquer."""
+    mesh = build_mesh(_solid((3, 3, 3)), _structure_family)
+    directions = {tuple(n) for n in mesh.normals.reshape(-1, 3).tolist()}
+    assert directions == {(1., 0., 0.), (-1., 0., 0.), (0., 1., 0.),
+                          (0., -1., 0.), (0., 0., 1.), (0., 0., -1.)}
+
+
 def test_les_normales_sont_unitaires_et_axiales():
     mesh = build_mesh(_solid((3, 3, 3)), _structure_family)
     normals = mesh.normals.reshape(-1, 3)

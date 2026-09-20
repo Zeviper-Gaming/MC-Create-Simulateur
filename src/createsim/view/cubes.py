@@ -14,6 +14,8 @@ from __future__ import annotations
 import math
 import time
 
+import numpy as np
+
 from PySide6 import QtCore, QtGui, QtOpenGL
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
@@ -27,9 +29,11 @@ layout(location = 2) in vec3 in_color;
 uniform mat4 mvp;
 out vec3 v_normal;
 out vec3 v_color;
+out vec3 v_world;
 void main() {
     v_normal = in_normal;
     v_color = in_color;
+    v_world = in_position;
     gl_Position = mvp * vec4(in_position, 1.0);
 }
 """
@@ -38,6 +42,7 @@ FRAGMENT_SHADER = """
 #version 330 core
 in vec3 v_normal;
 in vec3 v_color;
+in vec3 v_world;
 out vec4 frag_color;
 
 // Eclairage directionnel fixe, et rien de plus : ni ombres portees, ni
@@ -48,10 +53,25 @@ out vec4 frag_color;
 const vec3  LIGHT   = normalize(vec3(0.42, 0.80, 0.43));
 const float AMBIENT = 0.55;
 
+// Grille par bloc, restituee ici plutot qu'en geometrie. La fusion gloutonne
+// efface les aretes : sans elles, une coque de trente blocs n'est plus qu'un
+// aplat, et on perd l'echelle. Le trait s'attenue quand un bloc couvre moins
+// de deux pixels, sinon la grille moire au loin.
+const float EDGE = 0.34;
+
 void main() {
     float lambert = max(dot(normalize(v_normal), LIGHT), 0.0);
     float shade = AMBIENT + (1.0 - AMBIENT) * lambert;
-    frag_color = vec4(v_color * shade, 1.0);
+
+    vec3 axis = abs(normalize(v_normal));
+    vec2 uv = axis.x > 0.5 ? v_world.yz
+            : (axis.y > 0.5 ? v_world.xz : v_world.xy);
+    vec2 width = fwidth(uv);
+    vec2 dist = abs(fract(uv) - 0.5) / max(width, vec2(1e-5));
+    float edge = 1.0 - smoothstep(0.30, 0.95, min(dist.x, dist.y));
+    edge *= 1.0 - smoothstep(0.30, 0.90, max(width.x, width.y));
+
+    frag_color = vec4(v_color * shade * (1.0 - EDGE * edge), 1.0);
 }
 """
 
@@ -59,46 +79,67 @@ void main() {
 class OrbitCamera:
     """Orbite, panoramique, zoom, et les vues normalisees du cahier (F3.2)."""
 
-    FOV = 45.0
+    FOV = 40.0
     MARGIN = 1.08
 
     def __init__(self, centre=(0.0, 0.0, 0.0), radius: float = 32.0,
-                 bounds=None):
+                 points=None):
         self.target = list(centre)
         self.distance = radius * 3.0
         self.yaw = math.radians(35.0)
         self.pitch = math.radians(25.0)
         self.home_distance = self.distance
-        self.bounds = bounds
+        self.points = points
 
     def fit(self, aspect: float = 16 / 9) -> None:
-        """Cadre la boite englobante pour l'orientation courante.
+        """Cadre le vehicule pour l'orientation courante.
 
-        Une sphere englobante cadrerait beaucoup trop large sur un vaisseau
-        long et mince — le c1_air_cruiser fait 176 blocs de long pour 31 de
-        large, et n'occuperait qu'un tiers de l'image.
+        L'ajustement porte sur les SOMMETS du maillage, pas sur la boite
+        englobante : une coque longue et fine ne remplit pas sa boite, et la
+        cadrer laisserait le c1_air_cruiser au tiers de l'image.
         """
-        if not self.bounds:
+        points = self.points
+        if points is None or len(points) == 0:
             return
-        lo, hi = self.bounds
         right, up, forward = self._basis()
         half_fov = math.radians(self.FOV) / 2.0
         tan_v = math.tan(half_fov)
         tan_h = tan_v * max(aspect, 1e-3)
-        needed = 1.0
-        for cx in (lo[0], hi[0]):
-            for cy in (lo[1], hi[1]):
-                for cz in (lo[2], hi[2]):
-                    rel = (cx - self.target[0], cy - self.target[1],
-                           cz - self.target[2])
-                    # profondeur comptee vers la camera : forward pointe vers elle
-                    depth = -sum(rel[i] * forward[i] for i in range(3))
-                    u = sum(rel[i] * right[i] for i in range(3))
-                    v = sum(rel[i] * up[i] for i in range(3))
-                    needed = max(needed, depth + abs(u) / tan_h,
-                                 depth + abs(v) / tan_v)
-        self.distance = needed * self.MARGIN
-        self.home_distance = max(self.home_distance, self.distance)
+
+        rel = points - np.asarray(self.target, dtype=np.float32)
+        # profondeur comptee vers la camera : `forward` pointe vers elle
+        depth = -(rel @ np.asarray(forward, dtype=np.float32))
+        u = np.abs(rel @ np.asarray(right, dtype=np.float32))
+        v = np.abs(rel @ np.asarray(up, dtype=np.float32))
+        needed = np.maximum(u / tan_h, v / tan_v) - depth
+        self.distance = max(1.0, float(needed.max()) * self.MARGIN)
+        self.home_distance = self.distance
+
+    def auto_orient(self, aspect: float = 16 / 9) -> None:
+        """Choisit l'orientation de depart qui remplit le mieux l'image.
+
+        Un angle fixe cadre mal : une coque de 176 blocs de long posee en
+        diagonale ne remplit que la moitie de la largeur, le reste etant du
+        vide dans les coins. On essaie donc quelques azimuts et on garde celui
+        qui demande le moins de recul.
+
+        Les azimuts a moins de douze degres d'une vue de face ou de profil sont
+        ecartes : ils cadrent au plus serre, mais une vue plate ne montre plus
+        le relief, et c'est le relief qui situe les organes.
+        """
+        if self.points is None or len(self.points) == 0:
+            return
+        best = None
+        for degrees in range(0, 360, 5):
+            if min(degrees % 90, 90 - degrees % 90) < 12:
+                continue
+            self.yaw = math.radians(degrees)
+            self.fit(aspect)
+            if best is None or self.distance < best[0]:
+                best = (self.distance, self.yaw)
+        if best is not None:
+            self.yaw = best[1]
+            self.fit(aspect)
 
     def orbit(self, dyaw: float, dpitch: float) -> None:
         self.yaw += dyaw
@@ -136,7 +177,7 @@ class OrbitCamera:
 
     def matrix(self, aspect: float, far_scale: float = 40.0) -> QtGui.QMatrix4x4:
         projection = QtGui.QMatrix4x4()
-        projection.perspective(45.0, aspect if aspect > 0 else 1.0,
+        projection.perspective(self.FOV, aspect if aspect > 0 else 1.0,
                                max(0.05, self.distance * 0.002),
                                self.home_distance * far_scale)
         view = QtGui.QMatrix4x4()
@@ -155,7 +196,8 @@ class CubeView(QOpenGLWidget):
         super().__init__(parent)
         self.mesh = mesh
         self.background = background
-        self.camera = OrbitCamera(mesh.centre, mesh.radius, mesh.bounds)
+        self.camera = OrbitCamera(mesh.centre, mesh.radius,
+                                  mesh.positions.reshape(-1, 3))
         self._fitted = False
         self.program: QtOpenGL.QOpenGLShaderProgram | None = None
         self.vao: QtOpenGL.QOpenGLVertexArrayObject | None = None
@@ -206,7 +248,7 @@ class CubeView(QOpenGLWidget):
     def resizeGL(self, w: int, h: int) -> None:
         QtGui.QOpenGLContext.currentContext().functions().glViewport(0, 0, w, h)
         if not self._fitted and w > 1 and h > 1:
-            self.camera.fit(w / h)
+            self.camera.auto_orient(w / h)
             self._fitted = True
 
     def paintGL(self) -> None:
