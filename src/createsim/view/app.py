@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import replace
+from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -19,7 +21,10 @@ from ..model.vehicle import VehicleModel
 from ..sim.forces import lift_centre, resultant, torque_about
 from ..sim.state import SimOptions
 from ..sim.tick import Simulation
+from ..sim.telemetry import Trace
 from .cubes import CubeView, default_format
+from .curves import CurvePanel
+from .diagnostics import DiagnosticsPanel
 from .hud import Hud
 from .mesh import (build_cells_mesh, build_kinetic_mesh, build_marked_mesh,
                    build_mesh, families_from_model)
@@ -33,6 +38,8 @@ POCKET_FULL = (0.40, 0.78, 1.00)
 #: surbrillance d'une commande selectionnee et de ses destinataires (F4.3)
 SELECTED_COLOR = (1.00, 0.92, 0.35)
 TARGET_COLOR = (0.40, 1.00, 0.70)
+#: surbrillance des blocs d'une anomalie (F5)
+ANOMALY_COLOR = (1.00, 0.42, 0.38)
 
 TICK_MS = 50
 
@@ -63,12 +70,30 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.overlay_data = overlay
 
         self.panel = ControlPanel(model, sim)
+        self.diagnostics = DiagnosticsPanel()
+        self.curves = CurvePanel()
+        self.trace = Trace()
+        self.trace.record(sim)
+        self.curves.set_trace(self.trace)
+        self.replay: Trace | None = None
+
+        left = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        left.addWidget(self.view)
+        left.addWidget(self.curves)
+        left.setStretchFactor(0, 1)
+        left.setStretchFactor(1, 0)
+        left.setSizes([540, 190])
+
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.addTab(self.panel, "Commandes")
+        self.tabs.addTab(self.diagnostics, "Diagnostic")
+
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        splitter.addWidget(self.view)
-        splitter.addWidget(self.panel)
+        splitter.addWidget(left)
+        splitter.addWidget(self.tabs)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
-        splitter.setSizes([900, 360])
+        splitter.setSizes([900, 380])
         self.setCentralWidget(splitter)
 
         self.hud = Hud(self.view)
@@ -84,6 +109,11 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.panel.selection_changed.connect(self._select_lever)
         self.panel.sim_action.connect(self._sim_action)
         self.panel.renamed.connect(self._refresh_scene)
+        self.diagnostics.anomaly_selected.connect(self._select_anomaly)
+        self.curves.export_requested.connect(self._export_csv)
+        self.curves.reference_requested.connect(self._load_reference)
+        self.curves.replay_requested.connect(self._load_replay)
+        self.curves.replay_seek.connect(self._seek_replay)
 
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(TICK_MS)
@@ -129,8 +159,11 @@ class VehicleWindow(QtWidgets.QMainWindow):
 
     # -- boucle -------------------------------------------------------------
     def _advance(self) -> None:
+        if self.replay is not None:
+            return          # en rejeu, la simulation ne tourne pas
         for _ in range(self.speed):
             self.sim.step()
+            self.trace.record(self.sim)
         self._refresh_scene(rebuild_kinetic=False)
 
     def _refresh_scene(self, rebuild_kinetic: bool = True) -> None:
@@ -142,9 +175,12 @@ class VehicleWindow(QtWidgets.QMainWindow):
             # Le maillage teinte par regime est couteux : on ne le refait que
             # si les regimes ont pu changer, et seulement s'il est affiche.
             self.view.set_blocks(None, self._kinetic_mesh())
-        self.hud.set_report(self.name, self.sim.report(), overlay)
+        report = self.sim.report()
+        self.hud.set_report(self.name, report, overlay)
         self.hud.visible_groups = set(self.view.visible_groups)
         self.panel.refresh()
+        self.diagnostics.set_anomalies(report.get("anomalies") or [])
+        self.curves.refresh()
 
     def _commands_changed(self) -> None:
         self.sim._solve(self.sim.state)
@@ -161,11 +197,15 @@ class VehicleWindow(QtWidgets.QMainWindow):
         elif action == "reset":
             self.timer.stop()
             self.panel.play.setChecked(False)
+            self._stop_replay()
             self.sim.reset()
+            self.trace = Trace()
+            self.trace.record(self.sim)
+            self.curves.set_trace(self.trace)
             self._refresh_scene()
         elif action == "static":
             # F2.7 : converger sans regarder le transitoire
-            ticks = self.sim.run_until_stable()
+            ticks = self.sim.run_until_stable(trace=self.trace)
             self._refresh_scene()
             self.statusBar().showMessage(
                 "equilibre atteint en %d ticks (%.1f s) · %s"
@@ -185,6 +225,111 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(
             "%s · commande %d organe(s) · %s"
             % (libelle, len(lever.targets), self._base))
+
+    # -- diagnostic (F5) ----------------------------------------------------
+    def _select_anomaly(self, anomaly: dict) -> None:
+        """Situer une anomalie : « rotor soude a la coque » ne sert a rien si
+        on doit ensuite chercher OU."""
+        blocks = [tuple(int(v) for v in b) for b in (anomaly.get("blocs") or [])]
+        if not blocks:
+            return
+        self.view.set_highlight(build_marked_mesh(
+            [(blocks, ANOMALY_COLOR)], self.model.structure.size))
+        self.statusBar().showMessage(
+            "%s · %s · %d bloc(s) · %s"
+            % (anomaly.get("code", ""), anomaly.get("titre", ""),
+               len(blocks), self._base))
+
+    # -- telemetrie ---------------------------------------------------------
+    def _export_csv(self) -> None:
+        default = str(Path(self.model.structure.path or "trace").with_suffix(".csv"))
+        path, _filter = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Exporter la trace", default, "CSV (*.csv)")
+        if not path:
+            return
+        self.trace.to_csv(path)
+        note = " (tronquee)" if self.trace.truncated else ""
+        self.statusBar().showMessage(
+            "trace exportee : %d enregistrements%s vers %s"
+            % (len(self.trace), note, path))
+
+    def _open_trace(self, title: str) -> Trace | None:
+        default = str(Path(self.model.structure.path or ".").parent)
+        path, _filter = QtWidgets.QFileDialog.getOpenFileName(
+            self, title, default, "CSV (*.csv)")
+        if not path:
+            return None
+        try:
+            return Trace.from_csv(path)
+        except (OSError, ValueError) as exc:
+            QtWidgets.QMessageBox.warning(self, "Trace illisible", str(exc))
+            return None
+
+    def _load_reference(self) -> None:
+        trace = self._open_trace("Charger une trace de reference")
+        if trace is None:
+            return
+        self.curves.set_reference(trace)
+        self.statusBar().showMessage(
+            "reference : %d enregistrements superposes · %s"
+            % (len(trace), self._base))
+
+    # -- rejeu --------------------------------------------------------------
+    def _load_replay(self) -> None:
+        trace = self._open_trace("Rejouer une trace enregistree")
+        if trace is None or not len(trace):
+            return
+        self.timer.stop()
+        self.panel.play.setChecked(False)
+        self.replay = trace
+        self.curves.set_trace(trace)
+        self.curves.start_replay(trace)
+        self._seek_replay(0)
+
+    def _seek_replay(self, index: int) -> None:
+        """Rejoue un tick enregistre.
+
+        Les forces sont celles du fichier ; leurs POINTS d'application viennent
+        du modele, qui est le meme. Une trace se relit donc avec son vaisseau.
+        """
+        trace = self.replay
+        if trace is None or not (0 <= index < len(trace)):
+            return
+        row = trace.rows[index]
+        st = self.sim.state
+        st.tick = int(row.get("tick", 0))
+        st.position = [float(row.get("x", 0.0)), float(row.get("y", 63.0)),
+                       float(row.get("z", 0.0))]
+        st.velocity = [float(row.get("vx", 0.0)), float(row.get("vy", 0.0)),
+                       float(row.get("vz", 0.0))]
+        st.pressure = float(row.get("pression", 1.0))
+        st.on_ground = bool(row.get("au_sol", 0))
+
+        vectors = trace.vectors_at(index)
+        forces = [replace(f, vector=vectors[f.key]) if f.key in vectors else f
+                  for f in self.sim.current_forces(st)]
+        overlay = build_force_overlay(
+            forces, com=self.sim.mass.com, span=max(self.model.structure.size),
+            lift_centre=lift_centre(forces),
+            torque=torque_about(forces, self.sim.mass.com),
+            resultant=resultant(forces))
+        self.overlay_data = overlay
+        self.view.set_overlay(overlay)
+        self.curves.set_replay_position(index, trace)
+        inconnues = [k for k in trace.force_keys
+                     if k not in {f.key for f in forces}]
+        self.statusBar().showMessage(
+            "REJEU · tick %d · %.2f s · altitude %.2f%s · %s"
+            % (st.tick, row.get("temps_s", 0.0), st.position[1],
+               (" · %d force(s) du fichier sans equivalent dans ce vaisseau"
+                % len(inconnues)) if inconnues else "", self._base))
+
+    def _stop_replay(self) -> None:
+        if self.replay is None:
+            return
+        self.replay = None
+        self.curves.stop_replay()
+        self.curves.set_trace(self.trace)
 
     # -- accessoires --------------------------------------------------------
     def resizeEvent(self, event) -> None:

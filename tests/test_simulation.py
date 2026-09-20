@@ -8,7 +8,7 @@ import pytest
 
 from createsim.sim.forces import gas_nudge
 from createsim.sim.state import SimOptions
-from createsim.sim.telemetry import COLUMNS, Trace
+from createsim.sim.telemetry import BASE_COLUMNS, Trace
 from createsim.sim.tick import Simulation
 
 
@@ -146,7 +146,10 @@ def test_la_trace_est_exploitable(sim, tmp_path):
     assert len(trace) == 101
     chemin = trace.to_csv(str(tmp_path / "trace.csv"))
     lignes = open(chemin, encoding="utf-8").read().splitlines()
-    assert lignes[0].split(",") == list(COLUMNS)
+    colonnes = lignes[0].split(",")
+    # les colonnes de base d'abord, puis une par force et par axe
+    assert colonnes[:len(BASE_COLUMNS)] == list(BASE_COLUMNS)
+    assert any(c.startswith("f_") for c in colonnes)
     assert len(lignes) == 102
     assert all(math.isfinite(v) for v in trace.column("y"))
 

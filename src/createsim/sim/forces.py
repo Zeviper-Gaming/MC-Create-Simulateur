@@ -44,6 +44,18 @@ class Force:
     def magnitude(self) -> float:
         return math.sqrt(sum(c * c for c in self.vector))
 
+    @property
+    def key(self) -> str:
+        """Identite stable d'une force, d'un tick a l'autre et d'un run a l'autre.
+
+        Le separateur est un point et non une virgule : la clef devient un nom
+        de colonne CSV, et une virgule forcerait le guillemetage de tout
+        l'en-tete — le fichier doit rester lisible a la main.
+        """
+        if self.source is None:
+            return self.family
+        return "%s@%d.%d.%d" % ((self.family,) + tuple(self.source))
+
     def report(self) -> dict:
         return {"famille": self.family, "libelle": self.label,
                 "vecteur": [round(c, 3) for c in self.vector],
@@ -134,13 +146,15 @@ def propeller_forces(bearings, speeds: dict[Pos, float], tables) -> list[Force]:
     out: list[Force] = []
     for b in bearings:
         rpm = speeds.get(b.pos, 0.0)
-        if not rpm or not b.sails:
-            continue
         vec = FACING_VEC.get(b.facing)
         if vec is None:
             continue
-        magnitude = (b.sails ** exponent) * abs(rpm) * coef
-        sign = math.copysign(1.0, rpm)
+        # Une helice a l'arret produit une force NULLE, pas une force absente :
+        # sans cela la liste change d'un tick a l'autre, et une trace cesse
+        # d'etre rejouable.
+        magnitude = ((b.sails ** exponent) * abs(rpm) * coef
+                     if rpm and b.sails else 0.0)
+        sign = math.copysign(1.0, rpm) if rpm else 1.0
         point = (b.pos[0] + 0.5, b.pos[1] + 0.5, b.pos[2] + 0.5)
         label = "helice %d voiles a %.0f tr/min" % (b.sails, abs(rpm))
         if not b.reliable:
@@ -152,8 +166,12 @@ def propeller_forces(bearings, speeds: dict[Pos, float], tables) -> list[Force]:
 
 
 def wheel_forces(structure, props, speeds: dict[Pos, float], signals,
-                 friction: float, tables) -> list[Force]:
-    """Traction = RPM x (1 - frein) x friction x 1,75, au contact du sol."""
+                 friction: float, tables, on_ground: bool = True) -> list[Force]:
+    """Traction = RPM x (1 - frein) x friction x 1,75, au contact du sol.
+
+    Hors contact, la roue est toujours la mais ne pousse pas : sa force vaut
+    zero, elle ne disparait pas de la liste.
+    """
     coef = tables.get("forces.wheel_traction_coef")
     brake_base = tables.get("forces.wheel_brake_base")
     brake_step = tables.get("forces.wheel_brake_per_signal")
@@ -162,15 +180,13 @@ def wheel_forces(structure, props, speeds: dict[Pos, float], signals,
         for pos in sorted(structure.positions_of(name)):
             block = structure.blocks[pos]
             rpm = speeds.get(pos, 0.0)
-            if not rpm:
-                continue
             nbt = block.get("nbt") or {}
             signal = int(signals.get(pos, nbt.get("SignalStrength", 0) or 0))
             brake = min(1.0, brake_base + (signal / 15.0) * brake_step)
-            surface = min(friction, 1.0)
+            surface = min(friction, 1.0) if on_ground else 0.0
             magnitude = abs(rpm) * (1.0 - brake) * surface * coef
             vec = FACING_VEC.get(block["props"].get("facing"), (0.0, 0.0, 1.0))
-            sign = math.copysign(1.0, rpm)
+            sign = math.copysign(1.0, rpm) if rpm else 1.0
             point = (pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5)
             out.append(Force("roue", tuple(c * magnitude * sign for c in vec),
                              point, "roue a %.0f tr/min, frein %.0f%%"

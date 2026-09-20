@@ -112,10 +112,10 @@ class Simulation:
             out.append(lev)
         out.extend(F.propeller_forces(
             self.bearings.of_type("aeronautics:propeller_bearing"), st.speeds, t))
-        if st.on_ground or self.options.ground_enabled:
-            out.extend(F.wheel_forces(self.model.structure, self.model.props,
-                                      st.speeds, st.signals,
-                                      self.options.ground_friction, t))
+        out.extend(F.wheel_forces(self.model.structure, self.model.props,
+                                  st.speeds, st.signals,
+                                  self.options.ground_friction, t,
+                                  on_ground=bool(st.on_ground)))
         out.append(F.drag_force(self.drag, tuple(st.velocity), st.pressure, t))
         return out
 
@@ -148,11 +148,13 @@ class Simulation:
         return self.state
 
     def run_until_stable(self, max_ticks: int = 20000,
-                         tolerance: float = 1e-3) -> int:
+                         tolerance: float = 1e-3, trace=None) -> int:
         """Mode statique : converge vers l'equilibre sans regarder le transitoire."""
         for n in range(max_ticks):
             before = list(self.state.position)
             self.step()
+            if trace is not None:
+                trace.record(self)
             moved = max(abs(self.state.position[i] - before[i]) for i in range(3))
             if moved < tolerance and self.state.tick > 10:
                 return n + 1

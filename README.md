@@ -8,12 +8,13 @@ monde, sans serveur.
 Le but n'est pas de montrer *ce que* le véhicule fait, mais **quelle force en est
 responsable**. En jeu, on voit le résultat et jamais la décomposition.
 
-> **État : lots L0, L1 et L2 livrés — le périmètre demandé est atteint.**
+> **État : lots L0 à L3 livrés.**
 > L0 est le noyau physique, sans interface, dont les deux niveaux de validation
 > automatiques passent. L1 est la fenêtre 3D : blocs, centres, et décomposition des
-> forces. L2 est le bandeau de contrôle et la boucle temps réel — on actionne les
-> commandes du vaisseau et on le voit réagir. Restent le diagnostic outillé et les
-> courbes (L3), les scénarios (L4), l'édition de blocs (L5) et le tangage complet (L6).
+> forces. L2 est le bandeau de contrôle et la boucle temps réel — le périmètre
+> demandé. L3 ajoute le diagnostic cliquable, les courbes glissantes et la
+> télémétrie. Restent les scénarios (L4), l'édition de blocs (L5) et le tangage
+> complet (L6).
 
 ---
 
@@ -260,6 +261,40 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
+
+## L3 : chercher une panne et mesurer une amélioration
+
+Trois outils, et une exigence de fond dans chacun.
+
+**Les courbes.** Deux ou trois grandeurs au choix, sur une fenêtre glissante réglable.
+C'est là qu'on voit un vaisseau osciller autour de son altitude d'équilibre au lieu de
+s'y poser — un tableau de nombres ne le montre jamais, parce que l'oscillation est dans
+la *dérivée* et pas dans la valeur. Chaque série porte **sa propre échelle** : l'altitude
+se compte en centaines et la vitesse en unités, les forcer sur un axe commun écraserait
+l'une des deux. Une trace de référence chargée depuis un CSV se superpose en pointillé,
+sur la même échelle, ce qui permet de *mesurer* une amélioration au lieu de la deviner.
+
+**Le diagnostic.** La liste des anomalies, classée par gravité, **chacune cliquable pour
+situer ses blocs dans la vue 3D** — « rotor soudé à la coque » ne sert à rien si on doit
+ensuite chercher où. L'organe porte son nom donné quand il en a un. Et la distinction du
+cahier est tenue visuellement : une **limite du modèle** a sa propre couleur et n'est
+jamais présentée comme un défaut du vaisseau.
+
+**La télémétrie.** Un enregistrement par tick, exporté en CSV à en-tête, lisible à la
+main. Le cahier demande les **forces par source** et non par famille : une colonne par
+force et par axe, nommée de la clef stable de sa source — `f_helice@11.10.10_y`. Agréger
+par famille suffirait à tracer une courbe, mais pas à savoir laquelle des six hélices a
+molli, ni à rejouer la trace.
+
+**Le rejeu** relit une trace tick par tick et redessine les vecteurs enregistrés. Les
+*points* d'application viennent du modèle, qui est le même : une trace se relit donc
+**avec son vaisseau**, pas seule. L'aller-retour CSV est exact au flottant près.
+
+Deux détails qui ne vont pas de soi. Une hélice à l'arrêt produit une force **nulle**,
+pas une force **absente** — sans cela la liste change d'un tick à l'autre et la trace
+cesse d'être rejouable. Et la liste d'anomalies n'est reconstruite que si elle a changé :
+elle est recalculée à chaque tick mais ne bouge presque jamais, et rebâtir des dizaines
+de widgets vingt fois par seconde ferait retomber la boucle sous son seuil.
 
 ## L2 : actionner les commandes et voir le vaisseau réagir
 
