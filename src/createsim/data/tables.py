@@ -24,7 +24,19 @@ class TableError(RuntimeError):
 
 
 def find_tables_dir(start: Path | None = None) -> Path:
-    """Remonte depuis le paquet jusqu'au dossier data/tables du depot."""
+    """Remonte depuis le paquet jusqu'au dossier data/tables du depot.
+
+    Sans `start`, la racine des ressources vient de `createsim.paths` : c'est
+    la meme dans un depot et dans un executable PyInstaller.
+    """
+    if start is None:
+        from .. import paths
+        try:
+            candidate = paths.data_dir() / "tables"
+            if (candidate / "manifest.json").is_file():
+                return candidate
+        except FileNotFoundError:
+            pass
     here = (start or Path(__file__)).resolve()
     for parent in here.parents:
         candidate = parent / "data" / "tables"

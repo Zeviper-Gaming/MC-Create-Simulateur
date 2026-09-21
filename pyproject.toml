@@ -12,9 +12,14 @@ dependencies = ["nbtlib>=2.0", "numpy>=1.24"]
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 gui = ["PySide6>=6.9"]
+# de quoi construire l'executable autonome : python packaging/build_exe.py
+build = ["PySide6>=6.9", "pyinstaller>=6.10"]
 
 [project.scripts]
 createsim = "createsim.cli:main"
+
+[project.gui-scripts]
+createsim-gui = "createsim.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

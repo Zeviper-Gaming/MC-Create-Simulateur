@@ -66,6 +66,20 @@ def axis_of(block: dict) -> str | None:
     return face_axis
 
 
+class StructureError(ValueError):
+    """Un fichier qui n'est pas une structure Minecraft lisible.
+
+    Charger un `.nbt` depuis une fenetre, c'est aussi en charger un qui n'en est
+    pas un : un `level.dat`, le cache d'une forteresse, un fichier tronque.
+    Sans cette exception, l'utilisateur lisait `KeyError: 99` ou
+    `KeyError: 'size'` — vrais, et inutilisables.
+    """
+
+
+#: les champs qui font d'un NBT une STRUCTURE (format des structure blocks)
+REQUIRED_FIELDS = ("size", "DataVersion", "palette", "blocks")
+
+
 class Structure:
     """La carte 3D des blocs, avec etat et NBT de chaque block entity (F1.2)."""
 
@@ -82,7 +96,31 @@ class Structure:
 
     # -- chargement --------------------------------------------------------
     def _load(self, path: str) -> None:
-        f = nbtlib.load(path)
+        name = str(path).replace("\\", "/").split("/")[-1]
+        try:
+            f = nbtlib.load(path)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            raise StructureError(
+                "%s n'est pas un fichier NBT lisible (%s : %s)"
+                % (name, type(exc).__name__, exc)) from exc
+
+        missing = [k for k in REQUIRED_FIELDS if k not in f]
+        if missing:
+            raise StructureError(
+                "%s est un fichier NBT, mais pas une structure : il manque %s. "
+                "Il faut un .nbt enregistre par un bloc de structure ou par "
+                "l'outil de schematics de Create."
+                % (name, ", ".join("« %s »" % k for k in missing)))
+        try:
+            self._parse(f)
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise StructureError(
+                "%s est une structure mal formee (%s : %s)"
+                % (name, type(exc).__name__, exc)) from exc
+
+    def _parse(self, f) -> None:
         self.size = tuple(int(x) for x in f["size"])
         self.data_version = int(f["DataVersion"])
         palette = f["palette"]
@@ -96,7 +134,7 @@ class Structure:
                 entry["nbt"] = simplify(b["nbt"])
             self.blocks[pos] = entry
             self.by_name.setdefault(entry["name"], set()).add(pos)
-        self.entities = [simplify(e) for e in f["entities"]]
+        self.entities = [simplify(e) for e in f.get("entities", [])]
 
     # -- consultation ------------------------------------------------------
     def name(self, pos: Pos) -> str:

@@ -8,13 +8,97 @@ monde, sans serveur.
 Le but n'est pas de montrer *ce que* le véhicule fait, mais **quelle force en est
 responsable**. En jeu, on voit le résultat et jamais la décomposition.
 
-> **État : lots L0 à L3 livrés.**
+> **État : lots L0 à L4 livrés.**
 > L0 est le noyau physique, sans interface, dont les deux niveaux de validation
 > automatiques passent. L1 est la fenêtre 3D : blocs, centres, et décomposition des
 > forces. L2 est le bandeau de contrôle et la boucle temps réel — le périmètre
 > demandé. L3 ajoute le diagnostic cliquable, les courbes glissantes et la
-> télémétrie. Restent les scénarios (L4), l'édition de blocs (L5) et le tangage
-> complet (L6).
+> télémétrie. L4 apporte les scénarios, la comparaison et la non-régression.
+> Restent l'édition de blocs (L5) et le tangage complet (L6). L'outil se lance
+> maintenant **sans Python**, par un exécutable, et charge les `.nbt` directement.
+
+---
+
+## Lancer l'outil
+
+Une fenêtre, trois façons de l'ouvrir.
+
+| Comment | Ce qui s'ouvre |
+|---|---|
+| double-clic sur `createsim.exe` | l'**accueil** : vos fichiers récents, les `.nbt` de vos dossiers `schematics`, les exemples fournis |
+| glisser un `.nbt` sur l'icône `createsim.exe` | ce vaisseau, directement |
+| `createsim.exe vaisseau.nbt` | idem, en ligne de commande (`createsim vaisseau.nbt` depuis les sources) |
+
+L'exécutable est autonome : ni Python, ni PySide6, ni Minecraft. Il embarque les tables de
+constantes, la bibliothèque de scénarios et deux vaisseaux d'exemple.
+
+### Charger un `.nbt`
+
+Cinq chemins mènent à un vaisseau. Tous **remplacent le vaisseau courant**, à la même place
+et à la même taille — un seul à la fois, comme le cahier le décide.
+
+- **Glisser-déposer** un `.nbt` n'importe où dans la fenêtre : l'accueil, la vue 3D, le bandeau.
+  Si plusieurs fichiers sont lâchés, le premier s'ouvre et la barre d'état dit combien sont ignorés.
+- **Ctrl+O**, ou *Fichier → Ouvrir un .nbt…* : la boîte de dialogue s'ouvre dans le dernier
+  dossier utilisé, sinon dans le dossier `schematics` d'une de vos instances.
+- ***Fichier → Ouvrir un récent***.
+- **L'accueil** : un double-clic sur un fichier de la liste.
+- **La ligne de commande**, ou l'icône sur laquelle on glisse le fichier.
+
+L'outil sait où Create range ses fichiers : les dossiers `schematics` des instances **CurseForge**,
+**Prism / MultiMC** et du lanceur officiel. Pour un autre emplacement, la variable
+`CREATESIM_SCHEMATICS` (plusieurs dossiers séparés par `;` sous Windows).
+
+**Un `.nbt` qui n'est pas une structure** — le cache d'une forteresse, un `level.dat`, un fichier
+tronqué — est un cas normal, pas une erreur de programmation. L'outil le dit en une phrase
+(« il manque *size*, *DataVersion*, *palette*, *blocks* »), la fenêtre courante reste ouverte, et
+le fichier n'entre pas dans les récents. Avant, l'utilisateur lisait `KeyError: 99`.
+
+**Réglages et journal** vivent dans `%LOCALAPPDATA%\createsim` (Windows),
+`~/Library/Application Support/createsim` (macOS) ou `~/.config/createsim` (Linux) :
+du JSON lisible à la main, aucune clé de registre. `CREATESIM_HOME` déplace le tout — c'est
+aussi ce qui permet une installation portable. Le journal est le seul endroit où lire une erreur
+quand il n'y a pas de console : *Aide → À propos* dit où il est.
+
+L'outil **ne s'associe pas de lui-même** aux fichiers `.nbt` : d'autres logiciels les utilisent.
+Pour double-cliquer un `.nbt` : clic droit → *Ouvrir avec* → *Choisir une autre application* →
+`createsim.exe`.
+
+### Construire l'exécutable
+
+```bash
+pip install ".[build]"
+python packaging/build_exe.py            # dist/createsim/createsim.exe
+python packaging/build_exe.py --zip      # + dist/createsim-windows.zip
+python packaging/build_exe.py --onefile  # un seul fichier, démarrage plus lent
+```
+
+Le script ne se contente pas de construire : il **lance l'exécutable construit** et vérifie
+trois choses. Un paquet PyInstaller qui se construit sans erreur peut démarrer sur une fenêtre
+vide — il suffit qu'un plugin Qt ou un fichier de données manque.
+
+| Essai | Résultat mesuré |
+|---|---|
+| ouvre un vaisseau et dessine sa fenêtre, vue 3D comprise | image identique, à l'octet près, à celle des sources |
+| tient les 20 ticks/s obligatoires, rendu compris | **93 tours/s** |
+| ouvre l'accueil et y trouve ses exemples embarqués | ✅ |
+
+La construction prend une trentaine de secondes ; le dossier pèse 164 Mo, l'archive 66 Mo.
+L'exécutable a aussi été déplacé hors du dépôt et lancé depuis un autre répertoire, avec un
+profil vide : il ne dépend de rien d'autre que de son dossier.
+
+Le rendu est le même que depuis les sources, **pixel pour pixel** : la même image, 921 600 pixels,
+zéro différent.
+
+La forme *fichier unique* (`--onefile`, 64 Mo) passe les mêmes vérifications, mais se
+dépaquette dans le dossier temporaire à chaque lancement : **environ 2 s de plus** (4,1 s
+jusqu'à la première image, contre 2,1 s pour la forme dossier). Le dossier est le bon choix pour
+un usage quotidien ; le fichier unique, pour envoyer l'outil à quelqu'un.
+
+Deux limites, dites plutôt que tues. **Windows seulement** a été construit et vérifié ;
+PyInstaller ne compile pas pour un autre système, et l'archive `.app` de macOS n'est pas
+faite. Et l'exécutable n'est **pas signé** : téléchargé d'Internet plutôt que construit
+localement, Windows SmartScreen le signalera.
 
 ---
 
@@ -58,7 +142,8 @@ createsim tables import ".../config/create-server.toml" --appliquer
 
 ```bash
 pip install PySide6
-createsim voir mon_vaisseau.nbt
+createsim voir mon_vaisseau.nbt     # ou simplement : createsim mon_vaisseau.nbt
+createsim                            # sans fichier : l'accueil
 ```
 
 La fenêtre : le véhicule, **les forces qui s'exercent dessus**, et un bandeau latéral

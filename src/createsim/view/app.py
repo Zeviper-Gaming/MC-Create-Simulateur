@@ -28,6 +28,7 @@ from .cubes import CubeView, default_format
 from .curves import CurvePanel
 from .diagnostics import DiagnosticsPanel
 from .hud import Hud
+from .menus import fill_recent, install_menus
 from .mesh import (build_cells_mesh, build_kinetic_mesh, build_marked_mesh,
                    build_mesh, families_from_model)
 from .panel import ControlPanel
@@ -53,6 +54,12 @@ HELP = ("souris : orbite, molette : zoom, clic droit : translation   |   "
 class VehicleWindow(QtWidgets.QMainWindow):
     """Vue 3D a gauche, bandeau de controle a droite, boucle au milieu."""
 
+    #: ouvrir un autre vaisseau — c'est le lanceur qui s'en charge, la fenetre
+    #: ne sait ni ou sont les fichiers ni comment remplacer sa propre session
+    open_requested = QtCore.Signal(str)
+    browse_requested = QtCore.Signal()
+    about_requested = QtCore.Signal()
+
     def __init__(self, model: VehicleModel, sim: Simulation):
         super().__init__()
         self.model = model
@@ -60,6 +67,7 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.speed = 1
         self.name = (model.structure.path or "").replace("\\", "/").split("/")[-1]
         self.setWindowTitle("createsim — %s" % self.name)
+        self._recent_menu = install_menus(self)
 
         self.mesh = build_mesh(model.structure, families_from_model(model))
         overlay = self._overlay()
@@ -129,6 +137,10 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self._base = ("%d blocs · %d triangles · %s"
                       % (stats["blocs"], stats["triangles"], HELP))
         self.statusBar().showMessage(self._base)
+
+    def set_recent(self, paths) -> None:
+        """Met a jour « Ouvrir un recent »."""
+        fill_recent(self, self._recent_menu, list(paths))
 
     # -- construction des couches ------------------------------------------
     def _overlay(self):
@@ -454,52 +466,14 @@ def _load(path: str, tables=None, options: SimOptions | None = None):
     return model, Simulation(model, options or SimOptions())
 
 
-def run(path: str, tables=None, bench_seconds: float = 0.0,
+def run(path: str | None = None, tables=None, bench_seconds: float = 0.0,
         width: int = 1280, height: int = 720) -> int:
-    """Ouvre la fenetre. Avec `bench_seconds`, mesure la cadence puis sort."""
-    QtGui.QSurfaceFormat.setDefaultFormat(default_format())
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
+    """Ouvre la fenetre. Avec `bench_seconds`, mesure la cadence puis sort.
 
-    start = time.perf_counter()
-    model, sim = _load(path, tables)
-    window = VehicleWindow(model, sim)
-    build_time = time.perf_counter() - start
-
-    window.resize(width, height)
-    window.show()
-
-    stats = window.mesh.stats()
-    print("maillage    : %d blocs -> %d quadrilateres (%.1f %% fusionnes), "
-          "%d triangles"
-          % (stats["blocs"], stats["quadrilateres"],
-             stats["reduction_par_fusion"] * 100, stats["triangles"]))
-    drawn = sum(e["dessinees"] for e in window.overlay_data.legend)
-    print("forces      : %d vecteurs, echelle 1 bloc = %.0f"
-          % (drawn, (1.0 / window.overlay_data.scale)
-             if window.overlay_data.scale else 0))
-    print("commandes   : %d levier(s), %d consommateur(s)"
-          % (len(model.organ("redstone").levers),
-             len(model.organ("redstone").consumers)))
-    print("chargement  : %.2f s" % build_time)
-
-    if not bench_seconds:
-        return app.exec()
-
-    # --- mesure : la boucle complete, simulation ET rendu ---
-    frames = 0
-    for _ in range(10):
-        window.view.update()
-        app.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents)
-    begin = time.perf_counter()
-    deadline = begin + bench_seconds
-    while time.perf_counter() < deadline:
-        window._advance()
-        app.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents)
-        frames += 1
-    elapsed = time.perf_counter() - begin
-    rate = frames / elapsed if elapsed else 0.0
-    print("boucle      : %.0f tours/s sur %.1f s (%d tours, %dx%d)"
-          % (rate, elapsed, frames, width, height))
-    print("NF1 (20 ticks/s obligatoire) : %s" % ("TENU" if rate >= 20 else "NON TENU"))
-    window.close()
-    return 0 if rate >= 20 else 1
+    Sans `path`, l'accueil s'ouvre. Le travail est celui du lanceur : c'est lui
+    qui sait ouvrir un fichier, en remplacer un autre, et ne pas planter sur un
+    `.nbt` qui n'en est pas un.
+    """
+    from .launcher import run as launch
+    return launch([path] if path else [], tables, bench_seconds, None,
+                  width, height, verbose=True)

@@ -48,6 +48,13 @@ INSTANCE = Path(r"C:/Users/Florian/curseforge/minecraft/Instances"
 
 
 def default_library() -> Path:
+    from .. import paths
+    try:
+        candidate = paths.data_dir() / "scenarios"
+        if candidate.is_dir():
+            return candidate
+    except FileNotFoundError:
+        pass
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / "data" / "scenarios"
@@ -57,12 +64,10 @@ def default_library() -> Path:
 
 
 def _fixtures() -> Path | None:
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "tests" / "fixtures"
-        if candidate.is_dir():
-            return candidate
-    return None
+    """Les vaisseaux livres avec l'outil : `tests/fixtures` dans le depot,
+    `exemples` dans un executable."""
+    from .. import paths
+    return paths.examples_dir()
 
 
 def locate(name: str) -> Path | None:

@@ -61,3 +61,17 @@ def cruiser_model(tables) -> VehicleModel:
 def cachalot_v4_model(tables) -> VehicleModel:
     """174 voiles, toutes sur des rotors de palier."""
     return _hors_depot("cachalot_volant_v4.nbt", tables)
+
+
+@pytest.fixture(scope="session")
+def qt_app():
+    """Une seule QApplication pour toute la session : Qt n'en admet qu'une."""
+    pytest.importorskip("PySide6", reason="interface non installee")
+    from PySide6 import QtWidgets
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        try:
+            app = QtWidgets.QApplication([])
+        except Exception as exc:                     # pragma: no cover
+            pytest.skip("pas d'affichage disponible : %s" % exc)
+    return app

@@ -42,11 +42,10 @@ TOLERANCE_ANALYTIC = 0.01          # 1 %
 
 
 def default_fixtures() -> Path:
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "tests" / "fixtures"
-        if candidate.is_dir():
-            return candidate
+    from . import paths
+    found = paths.examples_dir()
+    if found is not None:
+        return found
     raise FileNotFoundError("tests/fixtures introuvable")
 
 

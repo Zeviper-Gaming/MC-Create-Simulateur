@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import __version__
 from .data.tables import Tables
 from .model.vehicle import VehicleModel
 from .sim.state import SimOptions
@@ -263,6 +264,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="createsim",
         description="Banc d'essai hors-jeu pour vehicules Create.")
     p.add_argument("--tables", help="dossier des tables de constantes")
+    p.add_argument("--version", action="version",
+                   version="createsim %s" % __version__)
     sub = p.add_subparsers(dest="commande_cli", required=True)
 
     a = sub.add_parser("analyse", help="rapport statique complet")
@@ -294,8 +297,8 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--fixtures", default=None)
     v.set_defaults(func=cmd_validate)
 
-    w = sub.add_parser("voir", help="fenetre 3D des blocs (spike)")
-    w.add_argument("fichier")
+    w = sub.add_parser("voir", help="fenetre 3D ; sans fichier, l'accueil")
+    w.add_argument("fichier", nargs="?", default=None)
     w.add_argument("--bench", type=float, default=0.0,
                    metavar="SECONDES", help="mesurer la cadence puis sortir")
     w.add_argument("--largeur", type=int, default=1280)
@@ -325,7 +328,40 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+#: les sous-commandes en ligne de commande ; tout le reste ouvre la fenetre
+COMMANDS = frozenset(("analyse", "run", "validate", "voir", "tables",
+                      "scenario", "nonregression"))
+
+
+#: les options de la fenetre : en tete de ligne, elles designent la fenetre
+GUI_OPTIONS = frozenset(("--bench", "--capture", "--largeur", "--hauteur"))
+
+
+def wants_window(argv: list[str]) -> bool:
+    """Vrai quand la ligne de commande demande la fenetre et non une commande.
+
+    `createsim` seul, `createsim vaisseau.nbt`, et ce que Windows envoie quand on
+    glisse un fichier sur l'icone : un chemin, sans verbe. `--tables` est une
+    option des deux modes : on la saute, avec sa valeur, pour regarder ce qui
+    la suit. Les autres options en tete (`-h`, `--version`) restent du ressort
+    de l'analyseur de commandes.
+    """
+    rest = list(argv)
+    while rest and (rest[0] == "--tables" or rest[0].startswith("--tables=")):
+        rest = rest[1:] if "=" in rest[0] else rest[2:]
+    if not rest:
+        return not argv
+    first = rest[0]
+    if first in GUI_OPTIONS or first.split("=")[0] in GUI_OPTIONS:
+        return True
+    return not first.startswith("-") and first not in COMMANDS
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if wants_window(argv):
+        from .gui import main as gui_main
+        return gui_main(argv)
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
