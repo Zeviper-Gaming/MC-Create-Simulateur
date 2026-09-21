@@ -92,7 +92,8 @@ def level2_analytic(tables: Tables, fixtures=None) -> list[dict]:
     for path in _fixtures(fixtures):
         model = VehicleModel.load(str(path), tables)
         mass = model.organ("masse").total
-        k = model.organ("trainee").coefficient(1.0)
+        k = model.organ("trainee").coefficient(1.0, mass)
+
         if k <= 0 or mass <= 0:
             continue
         thrust = max(1.0, mass * 0.5)

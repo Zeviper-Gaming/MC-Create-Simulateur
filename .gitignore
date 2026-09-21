@@ -8,5 +8,9 @@ dist/
 venv/
 *.csv
 !tests/fixtures/*.csv
+# Les traces de reference de la non-regression SONT le livrable du niveau 4 :
+# ignorees, un clone n'en trouverait aucune et la non-regression passerait
+# sans rien comparer.
+!data/scenarios/references/*.csv
 rapport*.json
 trace*.csv

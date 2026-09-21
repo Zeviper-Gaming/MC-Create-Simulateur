@@ -17,6 +17,11 @@ from createsim.sim.tick import Simulation
 FIXTURES = Path(__file__).parent / "fixtures"
 CARGO = FIXTURES / "cargo_airship.nbt"
 
+#: vaisseaux hors depot : leurs tests sont ignores quand ils sont absents,
+#: jamais comptes en echec
+INSTANCE = Path(r"C:/Users/Florian/curseforge/minecraft/Instances"
+                r"/La Bonne Compagnie/schematics")
+
 
 @pytest.fixture(scope="session")
 def tables() -> Tables:
@@ -37,3 +42,22 @@ def sim(cargo) -> Simulation:
 def cachalot_model(tables) -> VehicleModel:
     """Contraptions assemblees, jauges, transmission decouplee a 15."""
     return VehicleModel.load(str(FIXTURES / "cachalot_volant_v3.nbt"), tables)
+
+
+def _hors_depot(name: str, tables) -> VehicleModel:
+    path = INSTANCE / name
+    if not path.is_file():
+        pytest.skip("vaisseau hors depot : %s" % name)
+    return VehicleModel.load(str(path), tables)
+
+
+@pytest.fixture
+def cruiser_model(tables) -> VehicleModel:
+    """20 659 blocs, 839 etanches, 1 592 levitite, 16 voiles de coque."""
+    return _hors_depot("c1_air_cruiser.nbt", tables)
+
+
+@pytest.fixture
+def cachalot_v4_model(tables) -> VehicleModel:
+    """174 voiles, toutes sur des rotors de palier."""
+    return _hors_depot("cachalot_volant_v4.nbt", tables)

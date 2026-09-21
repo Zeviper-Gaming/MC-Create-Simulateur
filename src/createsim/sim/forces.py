@@ -167,25 +167,61 @@ def propeller_forces(bearings, speeds: dict[Pos, float], tables) -> list[Force]:
     return out
 
 
+def fudge_friction(friction: float, tables) -> float:
+    """`WheelMountBlockEntity.fudgeFriction` — et ce n'est PAS `min(f, 1)`.
+
+        f < 1  ->  0,1 + 0,9 f        f >= 1  ->  f
+
+    Consequence lue au bytecode : sur la glace (friction 0) le jeu laisse
+    0,10 d'adherence, pas zero — un vehicule y avance encore. Et un frottement
+    superieur a 1 passe inchange, ce qui compte pour la derive laterale.
+    """
+    if friction >= 1.0:
+        return friction
+    return (tables.get("forces.wheel_friction_fudge_offset")
+            + tables.get("forces.wheel_friction_fudge_scale") * friction)
+
+
+def wheel_grip(friction: float, tables) -> tuple[float, float]:
+    """(adherence brute, adherence bornee) — l'asymetrie du moteur.
+
+    Traction et freinage saturent a 1 ; la derive laterale utilise la valeur
+    NON bornee. Sur sable des ames (1,65), un vehicule tient donc mieux en
+    virage qu'il ne tracte.
+    """
+    grip = fudge_friction(friction, tables)
+    return grip, min(grip, 1.0)
+
+
+def wheel_brake(pos: Pos, nbt: dict, signals) -> float:
+    """Le frein d'une roue : le signal redstone recu PAR AU-DESSUS, sur 15.
+
+    `WheelMountBlockEntity.sable$physicsTick` offset 529 :
+    `level.getSignal(pos.above(), UP) / 15.0`. C'est `frein` tel quel — le
+    confondre avec le coefficient du freinage dynamique (0,075 + frein x 0,3)
+    laissait une roue freinee a fond tracter encore a 62 %.
+    """
+    signal = int(signals.get(pos, (nbt or {}).get("SignalStrength", 0) or 0))
+    return min(1.0, max(0.0, signal / 15.0))
+
+
 def wheel_forces(structure, props, speeds: dict[Pos, float], signals,
                  friction: float, tables, on_ground: bool = True) -> list[Force]:
-    """Traction = RPM x (1 - frein) x friction x 1,75, au contact du sol.
+    """Traction = RPM x (1 - frein) x min(adherence, 1) x 1,75, au contact.
 
     Hors contact, la roue est toujours la mais ne pousse pas : sa force vaut
     zero, elle ne disparait pas de la liste.
     """
     coef = tables.get("forces.wheel_traction_coef")
-    brake_base = tables.get("forces.wheel_brake_base")
-    brake_step = tables.get("forces.wheel_brake_per_signal")
+    _grip, surface = wheel_grip(friction, tables)
+    if not on_ground:
+        surface = 0.0
     out: list[Force] = []
     for name in tables.get("forces.wheel_mount_blocks"):
         for pos in sorted(structure.positions_of(name)):
             block = structure.blocks[pos]
             rpm = speeds.get(pos, 0.0)
-            nbt = block.get("nbt") or {}
-            signal = int(signals.get(pos, nbt.get("SignalStrength", 0) or 0))
-            brake = min(1.0, brake_base + (signal / 15.0) * brake_step)
-            surface = min(friction, 1.0) if on_ground else 0.0
+            brake = wheel_brake(pos, block.get("nbt"), signals)
             magnitude = abs(rpm) * (1.0 - brake) * surface * coef
             vec = FACING_VEC.get(block["props"].get("facing"), (0.0, 0.0, 1.0))
             sign = math.copysign(1.0, rpm) if rpm else 1.0
@@ -196,11 +232,174 @@ def wheel_forces(structure, props, speeds: dict[Pos, float], signals,
     return out
 
 
-def drag_force(drag_organ, velocity: Vec, pressure: float, tables) -> Force:
-    """Trainee lineaire F = -k.v, k = 0,33 x N_etanches x pression."""
-    k = drag_organ.coefficient(pressure)
+def wheel_friction_forces(wheel_organ, velocity: Vec, signals, friction: float,
+                          tables, on_ground: bool = True) -> list[Force]:
+    """Freinage longitudinal et derive laterale — le frottement DYNAMIQUE.
+
+    `WheelMountBlockEntity.sable$physicsTick`, offsets 555 a 669 :
+
+        freinage = -v_long x (0,075 + frein x 0,3) x min(adherence,1) x strengthMul
+        derive   = -v_lat  x 0,6                   x adherence        x strengthMul
+
+    Le moteur multiplie l'ensemble par `dt` et l'applique en impulsion : les
+    coefficients sont donc PAR SECONDE, et non par tick. C'est ce qui fixe la
+    constante de temps a 0,67 s frein relache et 0,13 s frein a fond.
+
+    Ces deux forces sont lineaires en v : elles entrent dans l'amortissement du
+    schema, pas dans la somme explicite. Elles sont tout de meme publiees pour
+    que la decomposition des forces les montre.
+    """
+    base = tables.get("forces.wheel_brake_base")
+    step = tables.get("forces.wheel_brake_per_signal")
+    lateral_coef = tables.get("forces.wheel_lateral_coef")
+    grip, surface = wheel_grip(friction, tables)
+    if not on_ground:
+        grip = surface = 0.0
+
+    out: list[Force] = []
+    for wheel in wheel_organ.wheels:
+        nbt = wheel_organ.s.blocks[wheel.pos].get("nbt")
+        brake = wheel_brake(wheel.pos, nbt, signals)
+        k_long = (base + brake * step) * surface * wheel.strength_mul
+        k_lat = lateral_coef * grip * wheel.strength_mul
+        point = (wheel.pos[0] + 0.5, wheel.pos[1] + 0.5, wheel.pos[2] + 0.5)
+
+        vector = [0.0, 0.0, 0.0]
+        vector[wheel.longitudinal_axis] = -k_long * velocity[wheel.longitudinal_axis]
+        vector[wheel.lateral_axis] += -k_lat * velocity[wheel.lateral_axis]
+        out.append(Force("frottement", tuple(vector), point,
+                         "roue : freinage k=%.0f, derive k=%.0f" % (k_long, k_lat),
+                         wheel.pos))
+    return out
+
+
+def wheel_damping(wheel_organ, signals, friction: float, tables,
+                  on_ground: bool = True) -> list[float]:
+    """L'amortissement par axe qu'ajoutent les roues.
+
+    Anisotrope par nature : le freinage agit sur l'axe du support, la derive
+    sur l'axe perpendiculaire, et rien sur la verticale.
+    """
+    damping = [0.0, 0.0, 0.0]
+    if not on_ground:
+        return damping
+    base = tables.get("forces.wheel_brake_base")
+    step = tables.get("forces.wheel_brake_per_signal")
+    lateral_coef = tables.get("forces.wheel_lateral_coef")
+    grip, surface = wheel_grip(friction, tables)
+    for wheel in wheel_organ.wheels:
+        nbt = wheel_organ.s.blocks[wheel.pos].get("nbt")
+        brake = wheel_brake(wheel.pos, nbt, signals)
+        damping[wheel.longitudinal_axis] += (
+            (base + brake * step) * surface * wheel.strength_mul)
+        damping[wheel.lateral_axis] += lateral_coef * grip * wheel.strength_mul
+    return damping
+
+
+def sail_forces(sail_organ, velocity: Vec, pressure: float, tables) -> list[Force]:
+    """Portance des voiles de coque — le seul modele d'aile de l'ecosysteme.
+
+    `BlockSubLevelLiftProvider.sable$contributeLiftAndDrag`, offsets 182-531 :
+
+        n  = normale de la voile        v = vitesse du bloc      P = pression
+        D∥ = n (n . v) C∥ P             D0 = v C0 P
+        L  = n |v - D∥| CL P
+        force -= D∥ + D0 + L
+
+    Les deux trainees sont lineaires en v et rejoignent l'amortissement ; seule
+    la portance est rendue ici, parce qu'elle est dirigee et non dissipative.
+
+    Une simplification assumee : le moteur retranche a la vitesse un D∥ deja
+    multiplie par son pas de temps, ce qui vaut environ 2 % — on garde |v|.
+    """
+    if not sail_organ.sails:
+        return []
+    lift_create = tables.get("forces.sail_lift_scalar")
+    lift_sym = tables.get("forces.symmetric_sail_lift_scalar")
+    speed = math.sqrt(sum(v * v for v in velocity))
+
+    by_axis: dict[tuple[int, float], float] = {}
+    for sail in sail_organ.sails:
+        coef = lift_sym if sail.symmetric else lift_create
+        if not coef:
+            continue
+        vec = sail.vector
+        key = (sail.axis, math.copysign(1.0, vec[sail.axis]))
+        by_axis[key] = by_axis.get(key, 0.0) + coef * speed * pressure
+
+    out: list[Force] = []
+    for (axis, sign), magnitude in sorted(by_axis.items()):
+        vector = [0.0, 0.0, 0.0]
+        vector[axis] = -sign * magnitude
+        out.append(Force("portance_voile", tuple(vector), sail_organ.centre,
+                         "voiles de coque, axe %s" % "xyz"[axis]))
+    return out
+
+
+def sail_damping(sail_organ, pressure: float, tables) -> list[float]:
+    """Les deux trainees des voiles, par axe.
+
+    La trainee parallele n'agit que selon la normale de la voile ; la trainee
+    diffuse freine les trois axes.
+    """
+    damping = [0.0, 0.0, 0.0]
+    if not sail_organ.sails:
+        return damping
+    c_parallel = tables.get("forces.sail_parallel_drag_scalar")
+    c_sym = tables.get("forces.symmetric_sail_parallel_drag_scalar")
+    c_diffuse = tables.get("forces.sail_directionless_drag_scalar")
+    for sail in sail_organ.sails:
+        damping[sail.axis] += (c_sym if sail.symmetric else c_parallel) * pressure
+        for i in range(3):
+            damping[i] += c_diffuse * pressure
+    return damping
+
+
+def levitite_damping(levitite_organ, velocity: Vec, tables) -> list[float]:
+    """Le levitite freine, et beaucoup, a basse vitesse.
+
+    `data/aeronautics/floating_materials/levitite.json` declare un profil
+    complet que le simulateur ignorait entierement : vertical 2,0 lent /
+    0,1 rapide, horizontal 1,5 / 0,05, transition a 3 blocs/s, et
+    `scale_friction_with_gravity` — donc x 11.
+
+    Le melange est ADDITIF, pas une interpolation : dans `applyFriction`, la
+    matrice lente est mise a l'echelle du facteur gaussien tandis que la rapide
+    garde la sienne. Le facteur se reduit, pour une grappe ponctuelle, a
+    `exp(-1,5 (v / transition)^2)` — c'est la simplification assumee ici : le
+    moteur y ajoute une correction d'etalement spatial de la grappe.
+    """
+    cells = getattr(levitite_organ, "cells", ())
+    if not cells:
+        return [0.0, 0.0, 0.0]
+    transition = tables.get("forces.levitite_transition_speed")
+    gravity = tables.get("pressure.gravity")
+    speed = math.sqrt(sum(v * v for v in velocity))
+    blend = math.exp(-1.5 * (speed / transition) ** 2) if transition else 0.0
+
+    vertical = (tables.get("forces.levitite_slow_vertical_friction") * blend
+                + tables.get("forces.levitite_fast_vertical_friction"))
+    horizontal = (tables.get("forces.levitite_slow_horizontal_friction") * blend
+                  + tables.get("forces.levitite_fast_horizontal_friction"))
+    n = len(cells) * gravity
+    return [horizontal * n, vertical * n, horizontal * n]
+
+
+def drag_force(drag_organ, velocity: Vec, pressure: float, tables,
+               mass: float = 0.0) -> Force:
+    """Trainee lineaire F = -k.v.
+
+    Deux termes qui n'ont pas la meme origine et qu'il faut pouvoir lire
+    separement : l'enveloppe (0,33 par bloc etanche, x pression) et
+    l'amortissement universel du moteur physique (un taux par seconde, donc
+    x masse une fois ramene a un coefficient de force).
+    """
+    enveloppe = drag_organ.envelope_coefficient(pressure)
+    universel = drag_organ.universal_coefficient(mass)
+    k = enveloppe + universel
     return Force("trainee", tuple(-k * v for v in velocity), drag_organ.centre,
-                 "k = %.1f sur %d blocs etanches" % (k, drag_organ.count))
+                 "k = %.0f (enveloppe %.0f sur %d blocs + universel %.0f)"
+                 % (k, enveloppe, drag_organ.count, universel))
 
 
 # ---------------------------------------------------------------------------

@@ -1,206 +1,306 @@
 {
-  "entries": {
-    "andesite_propeller_airflow": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 0.1
-    },
-    "andesite_propeller_thrust": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 1.0
-    },
-    "burner_max_hot_air": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "plafond du reglage molette",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 500
-    },
-    "burner_max_range": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "portee du raycast vers le ballon",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 80
-    },
-    "burner_min_hot_air": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 5
-    },
-    "default_friction": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "Sable PhysicsBlockPropertyTypes",
-      "value": 1.0
-    },
-    "drag_fast_horizontal": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
-      "value": 1.0
-    },
-    "drag_fast_vertical": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
-      "value": 1.0
-    },
-    "drag_floating_scale": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "sable:floating_scale sur #aeronautics:airtight",
-      "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
-      "value": 0.33
-    },
-    "drag_transition_speed": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "0 donc pas de slow drag : trainee purement lineaire",
-      "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
-      "value": 0.0
-    },
-    "gas_emptying_time": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "ticks",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 180.0
-    },
-    "gas_filling_time": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "ticks ; 9 s = 180 ticks",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 180.0
-    },
-    "gas_responsiveness_factor": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "le 5 de 1 + 5/(1+3x^2)",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 5.0
-    },
-    "gas_responsiveness_range": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "le 0,05 de x = diff/(0,05 x capacite)",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 0.05
-    },
-    "ground_friction": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "sable:friction (defaut 1,0)",
-      "value": {
-        "create:belt": 1.65,
-        "minecraft:blue_ice": 0.0,
-        "minecraft:frosted_ice": 0.0,
-        "minecraft:grindstone": 0.05,
-        "minecraft:honey_block": 1.65,
-        "minecraft:ice": 0.0,
-        "minecraft:mud": 0.25,
-        "minecraft:packed_ice": 0.0,
-        "minecraft:soul_sand": 1.65,
-        "minecraft:soul_soil": 1.65
-      }
-    },
-    "hot_air_strength": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "kg souleves par m3 d'air chaud",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts() ; aeronautics-server.toml [physics] hotAirStrength",
-      "value": 1.5
-    },
-    "levitite_blocks": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "data/aeronautics/floating_materials/levitite.json, Sable FloatingBlockController.applyLift()",
-      "value": [
-        "aeronautics:levitite",
-        "aeronautics:pearlescent_levitite"
-      ]
-    },
-    "levitite_lift_strength": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "par bloc, floating_scale = 1",
-      "source": "data/aeronautics/floating_materials/levitite.json, Sable FloatingBlockController.applyLift()",
-      "value": 10.0
-    },
-    "levitite_prevent_self_lift": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "plafonne la portance a la flottaison neutre",
-      "source": "data/aeronautics/floating_materials/levitite.json, Sable FloatingBlockController.applyLift()",
-      "value": true
-    },
-    "propeller_airflow_exponent": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 0.5
-    },
-    "propeller_bearing_airflow": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 0.05
-    },
-    "propeller_bearing_thrust": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java ; aeronautics-server.toml [physics] propellerBearingThrust",
-      "value": 0.2
-    },
-    "propeller_sail_exponent": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "voiles^1,5 dans getThrust()",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 1.5
-    },
-    "smart_propeller_thrust": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 1.0
-    },
-    "steam_strength": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
-      "value": 1.5
-    },
-    "tire_radii": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "Offroad TireLike",
-      "value": {
-        "crushing_wheel": 1.0,
-        "flywheel": 1.375,
-        "large_tire": 1.25,
-        "large_water_wheel": 2.4375,
-        "mechanical_roller": 0.7,
-        "monstrous_tire": 2.0,
-        "rockcutting_wheel": 0.8,
-        "small_tire": 0.75,
-        "tire": 0.96875,
-        "water_wheel": 1.0
-      }
-    },
-    "wheel_brake_base": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
-      "value": 0.075
-    },
-    "wheel_brake_per_signal": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "note": "frein = 0,075 + signal/15 x 0,3",
-      "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
-      "value": 0.3
-    },
-    "wheel_lateral_coef": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
-      "value": 0.6
-    },
-    "wheel_mount_blocks": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
-      "value": [
-        "offroad:wheel_mount"
-      ]
-    },
-    "wheel_traction_coef": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
-      "value": 1.75
-    },
-    "wooden_propeller_thrust": {
-      "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
-      "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
-      "value": 1.0
-    }
+ "entries": {
+  "andesite_propeller_airflow": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 0.1
   },
-  "name": "forces",
-  "schema": 1
+  "andesite_propeller_thrust": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 1.0
+  },
+  "burner_max_hot_air": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "plafond du reglage molette",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 500
+  },
+  "burner_max_range": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "portee du raycast vers le ballon",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 80
+  },
+  "burner_min_hot_air": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 5
+  },
+  "default_friction": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable PhysicsBlockPropertyTypes",
+   "value": 1.0
+  },
+  "drag_fast_horizontal": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
+   "value": 1.0
+  },
+  "drag_fast_vertical": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
+   "value": 1.0
+  },
+  "drag_floating_scale": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "sable:floating_scale sur #aeronautics:airtight",
+   "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
+   "value": 0.33
+  },
+  "drag_transition_speed": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "0 donc pas de slow drag : trainee purement lineaire",
+   "source": "data/aeronautics/floating_materials/simple_drag.json, data/aeronautics/physics_block_properties/balloon_drag.json, Sable FloatingBlockController.applyFriction()",
+   "value": 0.0
+  },
+  "gas_emptying_time": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "ticks",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 180.0
+  },
+  "gas_filling_time": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "ticks ; 9 s = 180 ticks",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 180.0
+  },
+  "gas_responsiveness_factor": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "le 5 de 1 + 5/(1+3x^2)",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 5.0
+  },
+  "gas_responsiveness_range": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "le 0,05 de x = diff/(0,05 x capacite)",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 0.05
+  },
+  "ground_friction": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "sable:friction (defaut 1,0)",
+   "value": {
+    "create:belt": 1.65,
+    "minecraft:blue_ice": 0.0,
+    "minecraft:frosted_ice": 0.0,
+    "minecraft:grindstone": 0.05,
+    "minecraft:honey_block": 1.65,
+    "minecraft:ice": 0.0,
+    "minecraft:mud": 0.25,
+    "minecraft:packed_ice": 0.0,
+    "minecraft:soul_sand": 1.65,
+    "minecraft:soul_soil": 1.65
+   }
+  },
+  "hot_air_strength": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "kg souleves par m3 d'air chaud",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts() ; aeronautics-server.toml [physics] hotAirStrength",
+   "value": 1.5
+  },
+  "levitite_blocks": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/levitite.json, Sable FloatingBlockController.applyLift()",
+   "value": [
+    "aeronautics:levitite",
+    "aeronautics:pearlescent_levitite"
+   ]
+  },
+  "levitite_fast_horizontal_friction": {
+   "mod": "aeronautics-neoforge-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/levitite.json",
+   "note": "scale_friction_with_gravity : le tout est multiplie par la norme de la gravite, soit 11 (Sable DimensionPhysics DEFAULT_GRAVITY = (0, -11, 0)). Melange lent/rapide ADDITIF, pas une interpolation : k = lent x blend + rapide, avec blend = exp(-1,5 (v/3)^2).",
+   "value": 0.05
+  },
+  "levitite_fast_vertical_friction": {
+   "mod": "aeronautics-neoforge-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/levitite.json",
+   "value": 0.1
+  },
+  "levitite_lift_strength": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "par bloc, floating_scale = 1",
+   "source": "data/aeronautics/floating_materials/levitite.json, Sable FloatingBlockController.applyLift()",
+   "value": 10.0
+  },
+  "levitite_prevent_self_lift": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "plafonne la portance a la flottaison neutre",
+   "source": "data/aeronautics/floating_materials/levitite.json, Sable FloatingBlockController.applyLift()",
+   "value": true
+  },
+  "levitite_slow_horizontal_friction": {
+   "mod": "aeronautics-neoforge-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/levitite.json",
+   "value": 1.5
+  },
+  "levitite_slow_vertical_friction": {
+   "mod": "aeronautics-neoforge-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/levitite.json",
+   "value": 2.0
+  },
+  "levitite_transition_speed": {
+   "mod": "aeronautics-neoforge-1.21.1-1.3.1.jar",
+   "source": "data/aeronautics/floating_materials/levitite.json",
+   "value": 3.0
+  },
+  "propeller_airflow_exponent": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 0.5
+  },
+  "propeller_bearing_airflow": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 0.05
+  },
+  "propeller_bearing_thrust": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java ; aeronautics-server.toml [physics] propellerBearingThrust",
+   "value": 0.2
+  },
+  "propeller_sail_exponent": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "voiles^1,5 dans getThrust()",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 1.5
+  },
+  "sail_directionless_drag_scalar": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable BlockSubLevelLiftProvider, methodes par defaut (bytecode javap) : sable$getDirectionlessDragScalar, ldc 0.068882026f",
+   "value": 0.068882026
+  },
+  "sail_lift_scalar": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable BlockSubLevelLiftProvider, methodes par defaut (bytecode javap) : sable$getLiftScalar, ldc 0.475f",
+   "note": "Les voiles de Create SONT des ailes : le mixin qui les y branche s'appelle mixin.compatibility.create.sails_providing_lift. Portance perpendiculaire a la voile, proportionnelle a la vitesse et a la pression — pas au carre, sans angle d'attaque ni decrochage.",
+   "value": 0.475
+  },
+  "sail_parallel_drag_scalar": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable BlockSubLevelLiftProvider, methodes par defaut (bytecode javap) : sable$getParallelDragScalar, ldc 0.75f",
+   "value": 0.75
+  },
+  "smart_propeller_thrust": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 1.0
+  },
+  "steam_strength": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "AeroPhysics.java, AeroBlockConfigs.java, DefaultLiftingGas.java, HotAirBurnerBlockEntity.getGasOutput(), ServerBalloon.updateGasAmounts()",
+   "value": 1.5
+  },
+  "symmetric_sail_blocks": {
+   "mod": "simulated-neoforge-1.21.1-1.3.1.jar",
+   "source": "SymmetricSailBlock, DYED_SYMMETRIC_SAILS",
+   "value": [
+    "simulated:black_symmetric_sail",
+    "simulated:blue_symmetric_sail",
+    "simulated:brown_symmetric_sail",
+    "simulated:cyan_symmetric_sail",
+    "simulated:gray_symmetric_sail",
+    "simulated:green_symmetric_sail",
+    "simulated:light_blue_symmetric_sail",
+    "simulated:light_gray_symmetric_sail",
+    "simulated:lime_symmetric_sail",
+    "simulated:magenta_symmetric_sail",
+    "simulated:orange_symmetric_sail",
+    "simulated:pink_symmetric_sail",
+    "simulated:purple_symmetric_sail",
+    "simulated:red_symmetric_sail",
+    "simulated:white_symmetric_sail",
+    "simulated:yellow_symmetric_sail"
+   ]
+  },
+  "symmetric_sail_lift_scalar": {
+   "mod": "simulated-neoforge-1.21.1-1.3.1.jar",
+   "source": "SymmetricSailBlock.sable$getLiftScalar : fconst_0",
+   "note": "« Unlike Regular Sails, Symmetric Sails only produce Drag » (ponder).",
+   "value": 0.0
+  },
+  "symmetric_sail_parallel_drag_scalar": {
+   "mod": "simulated-neoforge-1.21.1-1.3.1.jar",
+   "source": "SymmetricSailBlock.sable$getParallelDragScalar : ldc 1.75f",
+   "value": 1.75
+  },
+  "tire_radii": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "Offroad TireLike",
+   "value": {
+    "crushing_wheel": 1.0,
+    "flywheel": 1.375,
+    "large_tire": 1.25,
+    "large_water_wheel": 2.4375,
+    "mechanical_roller": 0.7,
+    "monstrous_tire": 2.0,
+    "rockcutting_wheel": 0.8,
+    "small_tire": 0.75,
+    "tire": 0.96875,
+    "water_wheel": 1.0
+   }
+  },
+  "wheel_brake_base": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
+   "value": 0.075,
+   "note": "coefficient du FREINAGE DYNAMIQUE, pas du frein de traction : traction et freinage ont deux formules distinctes qui partagent le mot frein."
+  },
+  "wheel_brake_per_signal": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "note": "frein = 0,075 + signal/15 x 0,3",
+   "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
+   "value": 0.3
+  },
+  "wheel_default_stiffness": {
+   "mod": "offroad-neoforge-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity (bytecode javap, offroad-neoforge-1.21.1-1.3.1) SuspensionStrengthValueBehaviour (molette du support)",
+   "note": "valeur de repli quand le NBT ne porte pas de ScrollValue.",
+   "value": 256.0
+  },
+  "wheel_friction_fudge_offset": {
+   "mod": "offroad-neoforge-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity (bytecode javap, offroad-neoforge-1.21.1-1.3.1) .fudgeFriction offset 6 (ldc 0.1d)",
+   "note": "fudgeFriction(f) = f < 1 ? 0,1 + 0,9 f : f. Ce n'est PAS min(f, 1) : la glace (friction 0) donne 0,10 d'adherence en jeu, pas zero, et un frottement >= 1 passe inchange.",
+   "value": 0.1
+  },
+  "wheel_friction_fudge_scale": {
+   "mod": "offroad-neoforge-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity (bytecode javap, offroad-neoforge-1.21.1-1.3.1) .fudgeFriction offset 9 (ldc 0.9d)",
+   "value": 0.9
+  },
+  "wheel_lateral_coef": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
+   "value": 0.6,
+   "note": "applique avec le frottement NON borne : sur sable des ames (1,65) un vehicule tient mieux en virage qu'il ne tracte (borne a 1,0)."
+  },
+  "wheel_mount_blocks": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
+   "value": [
+    "offroad:wheel_mount"
+   ]
+  },
+  "wheel_strength_mul_factor": {
+   "mod": "offroad-neoforge-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity (bytecode javap, offroad-neoforge-1.21.1-1.3.1) .sable$physicsTick offsets 136/147 : stiffness x (min(normalMass/stiffness, 1) x 10) x 2",
+   "note": "se simplifie en strengthMul = 20 x min(masse_portee, raideur). Sous saturation la deceleration est independante de la masse, comme le frottement reel ; au-dela, un vehicule surcharge sur suspension molle ne freine plus.",
+   "value": 20.0
+  },
+  "wheel_traction_coef": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "Offroad WheelMountBlockEntity physicsTick (mixin Sable)",
+   "value": 1.75
+  },
+  "wooden_propeller_thrust": {
+   "mod": "create-aeronautics-bundled-1.21.1-1.3.1.jar",
+   "source": "PropellerBearingBlockEntity.getThrust()/getAirflow(), AeroPhysics.java",
+   "value": 1.0
+  }
+ },
+ "name": "forces",
+ "schema": 1
 }

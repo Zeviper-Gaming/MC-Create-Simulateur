@@ -46,23 +46,29 @@ DT = 1.0 / TICKS_PER_SECOND
 
 
 def integrate(position: list, velocity: list, external_force: tuple,
-              damping: float, mass: float) -> None:
+              damping, mass: float) -> None:
     """Un pas. Modifie `position` et `velocity` en place.
 
-    `external_force` : toutes les forces SAUF la trainee.
-    `damping` : le k de F = -k.v, dont le terme est integre exactement.
+    `external_force` : toutes les forces lineaires en v mises a part.
+    `damping` : le k de F = -k.v, integre exactement. Scalaire ou triplet.
+
+    Il est devenu un TRIPLET quand les roues sont arrivees : leur freinage agit
+    sur l'axe du support, leur derive sur l'axe perpendiculaire, la trainee sur
+    les trois. Les garder dans la somme explicite aurait coute l'exactitude de
+    l'integration exponentielle, qui est ce qui tient le niveau 2 a 0,000 %.
     """
     if mass <= 0:
         return
-    rate = (damping / mass) * DT
-    if rate < 1e-9:
-        for i in range(3):
+    if isinstance(damping, (int, float)):
+        damping = (damping, damping, damping)
+    for i in range(3):
+        k = damping[i]
+        rate = (k / mass) * DT
+        if rate < 1e-9:
             velocity[i] += external_force[i] / mass * DT
-    else:
-        decay = math.exp(-rate)
-        for i in range(3):
-            terminal = external_force[i] / damping
-            velocity[i] = terminal + (velocity[i] - terminal) * decay
+        else:
+            terminal = external_force[i] / k
+            velocity[i] = terminal + (velocity[i] - terminal) * math.exp(-rate)
     for i in range(3):
         position[i] += velocity[i] * DT
 

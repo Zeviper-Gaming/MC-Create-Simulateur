@@ -324,6 +324,47 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
 
+## Frottement : relevé au bytecode, pas à la documentation
+
+Les modèles de frottement ont été relus directement dans les jars de l'instance, désassemblés
+à `javap` — rapport complet dans [`docs/rapport-frottement-create.md`](docs/rapport-frottement-create.md),
+chaque constante avec sa classe et son offset. La découverte qui a tout recadré : **le moteur
+physique est Rapier** (Rust, lié en natif par `sable_rapier`). Sable prépare des forces,
+Rapier intègre.
+
+| Mécanisme | Avant | Après |
+|---|---|---|
+| Traînée d'enveloppe | 0,33 × N × pression | inchangée — confirmée exacte |
+| Amortissement universel | ignoré | 0,09 s⁻¹ × masse |
+| Traction des roues | frein faux | `frein = signal / 15` |
+| Adhérence au sol | `min(f, 1)` | `fudgeFriction` : glace → 0,10 |
+| Freinage et dérive des roues | absents | par seconde, anisotropes |
+| Voiles de coque | ignorées | portance 0,475 et deux traînées |
+| Levitite | aucune traînée | profil lent/rapide × gravité |
+
+**L'amortissement universel est le gros morceau.** `universal_drag = 0,09` est remis à
+`Rapier3D.initialize(gx, gy, gz, drag)` à côté de la gravité : c'est le taux
+d'amortissement du corps rigide, en s⁻¹, pas une traînée par bloc. Sur le c1_air_cruiser —
+20 659 blocs pour 839 étanches — il divise la constante de temps par **6,4**, de 60 s à 9,4 s.
+
+**La traction des roues avait un bug.** Deux formules du moteur partagent le mot « frein » ;
+le code prenait les constantes du freinage dynamique (0,075 et 0,3) pour fabriquer celui de
+la traction. Une roue freinée à fond tractait encore à 62 %.
+
+**L'amortissement est devenu un vecteur par axe.** Freinage, dérive, traînée des voiles et
+levitite sont linéaires en v, donc ils entrent dans l'intégration exacte plutôt que dans la
+somme explicite — mais ils sont anisotropes. Le niveau 2 reste à 0,000 %.
+
+**Les voiles sont des ailes**, par un mixin au nom sans ambiguïté :
+`compatibility.create.sails_providing_lift`. Aucun vaisseau actuel n'en profite : les 60 voiles
+de coque de la flotte sont des voiles symétriques, qui ne font que freiner.
+
+Deux simplifications restent, signalées comme limites du modèle et non tues : la masse portée
+par chaque roue (F5.10, le moteur la tire de la matrice de masse inverse) et le mélange
+lent/rapide du levitite (F5.11, sans la correction d'étalement de la grappe).
+
+---
+
 ## L4 : comparer deux configurations, survivre à une mise à jour de mod
 
 Un scénario associe quatre choses, et il faut les quatre pour qu'une exécution soit

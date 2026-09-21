@@ -31,7 +31,11 @@ def test_paliers_et_voiles(cargo):
 def test_blocs_etanches_et_trainee(cargo):
     drag = cargo.organ("trainee")
     assert drag.count == 2490
-    assert drag.coefficient(1.0) == pytest.approx(0.33 * 2490, abs=1e-9)
+    assert drag.envelope_coefficient(1.0) == pytest.approx(0.33 * 2490, abs=1e-9)
+    # l'amortissement universel du moteur (Rapier) s'ajoute par la MASSE :
+    # c'est un taux par seconde, pas une trainee par bloc.
+    assert drag.coefficient(1.0, 1000.0) == pytest.approx(0.33 * 2490 + 90.0,
+                                                          abs=1e-9)
 
 
 def test_bilan_de_vol(sim):

@@ -17,8 +17,8 @@ il prépare des forces et les remet à Rapier. Cela tranche plusieurs ambiguït�
 
 ## 🔓 Ce que ce rapport propose de modifier
 
-Rien n'est modifié pour l'instant. Récapitulatif de ce que le TOP engagerait, par ordre
-d'impact décroissant :
+**Appliqué le 2026-09-21 après le TOP.** Voir la section 9 pour ce que l'application a
+corrigé dans ce rapport lui-même. Récapitulatif, par ordre d'impact décroissant :
 
 | # | Chemin | Édition | Impact |
 |---|---|---|---|
@@ -26,8 +26,8 @@ d'impact décroissant :
 | 2 | `sim/forces.py` (`wheel_forces`) | Correction d'un bug | roue freinée à fond |
 | 3 | `sim/forces.py`, `data/tables/forces.json` | `fudgeFriction` | glace, boue, meule |
 | 4 | `sim/forces.py`, `sim/integrator.py`, `model/wheels.py` (création) | Frottement dynamique | distance d'arrêt, virage |
-| 5 | `sim/forces.py`, `model/sails.py` (création), `data/tables/forces.json` | Portance des voiles | ≈ 1 % du poids |
-| 6 | `model/drag.py`, `data/tables/forces.json` | Traînée du levitite | nulle aujourd'hui |
+| 5 | `sim/forces.py`, `model/sails.py` (création), `data/tables/forces.json` | Portance et traînée des voiles | traînée seule sur la flotte : ses 60 voiles de coque sont symétriques |
+| 6 | `sim/forces.py`, `data/tables/forces.json` | Traînée du levitite | cruiser : τ ≈ 0,45 s à l'arrêt |
 | 7 | `data/scenarios/references/*.csv` | Re-bénédiction après #1 | inévitable |
 
 **Ce qui n'aura PAS lieu :** aucune écriture dans un `.nbt`, dans l'instance CurseForge ou
@@ -286,9 +286,17 @@ traînée linéaire des blocs étanches, amortissement universel, portance des v
 | `c1_air_cruiser` | 513 | 16 |
 
 Seules les voiles hors rotor comptent ici : celles d'un rotor tournent avec leur palier.
-Les 44 voiles de coque du cargo ajoutent au plus `0,75 × 44 = 33` de traînée parallèle et
-`0,475 × 44 = 21` de portance — à 10 blocs/s, environ **1 % de son poids**. C'est réel,
-sourcé, et mineur pour ces vaisseaux-là. À implémenter pour la justesse, pas en urgence.
+
+> **Corrigé à l'application.** La première version de ce rapport attribuait aux 44 voiles
+> du cargo 21 unités de portance. C'est faux : **les 60 voiles de coque de la flotte sont
+> toutes des voiles symétriques** (`simulated:white_symmetric_sail`), qui ne portent pas.
+> Le test écrit pour vérifier leur portance l'a révélé en revenant vide.
+
+Elles ne font donc que freiner, et selon leur axe : les 44 du cargo portent `axis=x`, soit
+`1,75 × 44 = 77` de traînée parallèle sur x, plus `0,0689 × 44 = 3,0` de traînée diffuse sur
+les trois axes. **Aucun vaisseau actuel ne génère de portance de voile** — le modèle est en
+place et testé sur une voile Create synthétique, prêt pour le premier vaisseau qui en
+porterait en coque.
 
 ---
 
@@ -410,4 +418,36 @@ correction la plus lourde du lot.
 
 ---
 
-**Rien n'est appliqué. J'attends ton TOP.**
+---
+
+## 9. Ce que l'application a appris
+
+Trois choses que la lecture du bytecode seule n'avait pas montrées, et que les tests ont
+fait sortir.
+
+**Les voiles de coque de la flotte ne portent pas.** Voir la correction en section 4.
+
+**Une voile symétrique n'a pas de `facing`.** `SymmetricSailBlock.sable$getNormal` renvoie
+`Direction.get(POSITIVE, AXIS)` : sa normale vient de sa propriété `axis`. Lire le `facing`
+comme pour une voile Create donnait `None`, et la traînée parallèle retombait par défaut sur
+l'axe vertical. Sur le cargo, 77 unités de traînée partaient sur y au lieu de x.
+
+**Le levitite pèse lourd sur le cruiser.** 1 592 blocs × 11 (gravité) × 2,1 donnent 36 775
+d'amortissement vertical à l'arrêt, pour une masse de 16 644 : τ ≈ 0,45 s. Le vaisseau
+descend désormais à 0,21 bloc/s au lieu de chuter — le comportement d'un matériau
+anti-gravité qui « tient » le vaisseau, et c'est bien ce que dit le profil
+`floating_materials/levitite.json`. C'est aussi le changement le moins confronté du lot :
+aucune mesure ne l'a encore validé.
+
+### Effet mesuré par la non-régression, avant re-bénédiction
+
+| Scénario | vitesse max | montée | autre |
+|---|---|---|---|
+| cargo — montée à vide | −9,8 % | +9,2 % | altitude max −1,6 % |
+| cargo — brûleurs coupés | −5,1 % | +18,8 % | altitude max −4,5 % |
+| cargo — décollage du sol | −9,6 % | +9,6 % | |
+| cachalot — moulin et hélices | −10,1 % | +8,3 % | |
+| cachalot v4 — disjonction | −12,8 % | +6,7 % | distance −16,9 % |
+
+L'altitude d'équilibre ne bouge pas : la traînée ne change pas l'équilibre statique, seulement
+le transitoire — le vaisseau dépasse moins son altitude avant de s'y poser.

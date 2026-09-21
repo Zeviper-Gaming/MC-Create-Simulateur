@@ -1,58 +1,58 @@
 {
-  "entries": {
-    "base_pressure": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
-      "value": 1.0
-    },
-    "gravity": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "note": "DEFAULT_GRAVITY = (0, -11, 0)",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
-      "value": 11.0
-    },
-    "logical_height": {
-      "mod": "create-1.21.1-6.0.10.jar",
-      "source": "Minecraft overworld",
-      "value": 384
-    },
-    "min_y": {
-      "mod": "create-1.21.1-6.0.10.jar",
-      "source": "Minecraft overworld",
-      "value": -64
-    },
-    "pressure_cap": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
-      "value": 1.5
-    },
-    "pressure_k": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
-      "value": -0.004
-    },
-    "pressure_step": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
-      "value": 200.0
-    },
-    "pressure_top_margin": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
-      "value": 40.0
-    },
-    "sea_level": {
-      "mod": "create-1.21.1-6.0.10.jar",
-      "source": "Minecraft overworld",
-      "value": 63
-    },
-    "universal_drag": {
-      "mod": "sable-neoforge-1.21.1-2.0.5.jar",
-      "note": "non applique en L0",
-      "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
-      "value": 0.09
-    }
+ "entries": {
+  "base_pressure": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
+   "value": 1.0
   },
-  "name": "pressure",
-  "schema": 1
+  "gravity": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "note": "DEFAULT_GRAVITY = (0, -11, 0)",
+   "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode)",
+   "value": 11.0
+  },
+  "logical_height": {
+   "mod": "create-1.21.1-6.0.10.jar",
+   "source": "Minecraft overworld",
+   "value": 384
+  },
+  "min_y": {
+   "mod": "create-1.21.1-6.0.10.jar",
+   "source": "Minecraft overworld",
+   "value": -64
+  },
+  "pressure_cap": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+   "value": 1.5
+  },
+  "pressure_k": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+   "value": -0.004
+  },
+  "pressure_step": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+   "value": 200.0
+  },
+  "pressure_top_margin": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar",
+   "source": "Sable DimensionPhysics.createDefault() / DEFAULT_GRAVITY (bytecode) + BezierResourceFunction",
+   "value": 40.0
+  },
+  "sea_level": {
+   "mod": "create-1.21.1-6.0.10.jar",
+   "source": "Minecraft overworld",
+   "value": 63
+  },
+  "universal_drag": {
+   "mod": "sable-neoforge-1.21.1-2.0.5.jar + sable_rapier",
+   "source": "DimensionPhysics.createDefault offset 273 (ldc 0.09f) -> SubLevelPhysicsSystem.initialize offset 36 PhysicsPipeline.init(gravite, drag) -> RapierPhysicsPipeline.init offset 24 Rapier3D.initialize(gx, gy, gz, drag) [natif]",
+   "note": "TAUX D'AMORTISSEMENT PAR SECONDE du corps rigide, pas un coefficient de force et pas une trainee par bloc : le moteur Rapier l'applique a la vitesse du corps entier. Pour l'ajouter a un coefficient k de F = -k.v, il faut le multiplier par la MASSE. Seul il impose tau = 1/0,09 = 11,1 s.",
+   "value": 0.09
+  }
+ },
+ "name": "pressure",
+ "schema": 1
 }

@@ -281,6 +281,23 @@ def test_un_scenario_sans_reference_n_est_pas_une_regression(tmp_path):
     assert "reference" in results[0]["detail"]
 
 
+def test_les_traces_de_reference_ne_sont_pas_ignorees_par_git():
+    """Elles l'ont ete de L4 jusqu'au lot frottement : `*.csv` dans .gitignore.
+    Aucune n'avait ete poussee, et sur un clone la non-regression disait « pas
+    de reference » et passait — sans jamais rien comparer."""
+    import shutil
+    import subprocess
+    if shutil.which("git") is None:
+        pytest.skip("git absent")
+    for scenario in library():
+        path = scenario.reference_path()
+        result = subprocess.run(["git", "check-ignore", "-q", str(path)],
+                                cwd=str(path.parents[3]), capture_output=True)
+        if result.returncode == 128:
+            pytest.skip("hors d'un depot git")
+        assert result.returncode == 1, "%s est ignore par git" % path.name
+
+
 def test_une_trace_de_reference_est_relisible():
     """Format ouvert : la reference doit se relire sans l'outil qui l'a ecrite."""
     for scenario in library():

@@ -17,6 +17,11 @@ from .integrator import TICKS_PER_SECOND, clamp_to_ground, integrate, terminal_m
 from .kinetics import concordance, solve_speeds
 from .state import SimOptions, SimState
 
+#: familles LINEAIRES EN v : elles entrent dans l'amortissement du schema, pas
+#: dans la somme explicite, sous peine de les compter deux fois et de perdre
+#: l'exactitude de l'integration exponentielle.
+IMPLICIT_FAMILIES = ("trainee", "frottement")
+
 
 class Simulation:
     """Le noyau. Tourne sans fenetre, ce qui le rend testable et rejouable."""
@@ -75,6 +80,14 @@ class Simulation:
     def stress(self):
         return self.model.organ("stress")
 
+    @property
+    def wheels(self):
+        return self.model.organ("roues")
+
+    @property
+    def sails(self):
+        return self.model.organ("voiles")
+
     # -- remise a zero -----------------------------------------------------
     def reset(self) -> None:
         """Jette l'etat, garde le modele. Instantane, sans relire le fichier."""
@@ -113,6 +126,23 @@ class Simulation:
         st.conflicts = solution.conflicts
         st.overloaded = overloaded
 
+    def _damping(self, st: SimState) -> list[float]:
+        """L'amortissement par axe : tout ce qui est lineaire en v.
+
+        Isotrope pour la trainee d'enveloppe et l'amortissement universel ;
+        anisotrope pour les roues (axe du support et perpendiculaire), les
+        voiles (leur normale) et le levitite (vertical / horizontal).
+        """
+        isotropic = self.drag.coefficient(st.pressure, self.mass.total)
+        wheels = F.wheel_damping(self.wheels, st.signals,
+                                 self.options.ground_friction, self.tables,
+                                 bool(st.on_ground))
+        sails = F.sail_damping(self.sails, st.pressure, self.tables)
+        levitite = F.levitite_damping(self.levitite, tuple(st.velocity),
+                                      self.tables)
+        return [isotropic + a + b + c
+                for a, b, c in zip(wheels, sails, levitite)]
+
     def current_forces(self, st: SimState | None = None) -> list[F.Force]:
         st = st or self.state
         t = self.tables
@@ -128,7 +158,12 @@ class Simulation:
                                   st.speeds, st.signals,
                                   self.options.ground_friction, t,
                                   on_ground=bool(st.on_ground)))
-        out.append(F.drag_force(self.drag, tuple(st.velocity), st.pressure, t))
+        out.append(F.drag_force(self.drag, tuple(st.velocity), st.pressure, t,
+                                self.mass.total))
+        out.extend(F.wheel_friction_forces(
+            self.wheels, tuple(st.velocity), st.signals,
+            self.options.ground_friction, t, bool(st.on_ground)))
+        out.extend(F.sail_forces(self.sails, tuple(st.velocity), st.pressure, t))
         return out
 
     def step(self) -> SimState:
@@ -137,11 +172,13 @@ class Simulation:
         st.gas = F.step_gas(st.gas, self.balloons.pockets, st.signals, self.tables)
         st.pressure = self.curve.at(st.position[1])
         st.forces = self.current_forces(st)
-        # La trainee est retiree de la somme explicite : elle entre dans le
-        # schema par son coefficient, traite implicitement.
-        external = F.resultant([f for f in st.forces if f.family != "trainee"])
-        damping = self.drag.coefficient(st.pressure)
-        integrate(st.position, st.velocity, external, damping, self.mass.total)
+        # Les forces LINEAIRES EN v sont retirees de la somme explicite : elles
+        # entrent dans le schema par leur coefficient, traite exactement. C'est
+        # le cas de la trainee, et du frottement des roues depuis qu'il existe.
+        external = F.resultant([f for f in st.forces
+                                if f.family not in IMPLICIT_FAMILIES])
+        integrate(st.position, st.velocity, external, self._damping(st),
+                  self.mass.total)
         floor = self.ground.height_at(st.position[0], st.position[2])
         if floor != float("-inf"):
             floor += self.mass.com[1]      # le sol porte le point le plus bas
@@ -241,7 +278,11 @@ class Simulation:
         rep["roues"] = [f.report() for f in F.wheel_forces(
             structure, self.model.props, speeds_for_report, st.signals,
             self.options.ground_friction, t)]
-        rep["trainee"] = self.drag.report(st.pressure)
+        rep["voiles"] = self.sails.report()
+        rep["suspensions"] = self.wheels.report()
+        rep["trainee"] = self.drag.report(st.pressure, self.mass.total)
+        rep["trainee"]["amortissement_par_axe"] = [
+            round(v, 1) for v in self._damping(st)]
         rep["situation"] = {**self.options.report(), "sol": self.ground.report(),
                             "pression": round(st.pressure, 4)}
 
@@ -276,7 +317,8 @@ class Simulation:
                 F.longitudinal_axis(structure.size)),
         }
         total_push = thrust + traction
-        rep["mouvement"] = (terminal_motion(total_push, self.drag.coefficient(1.0),
+        rep["mouvement"] = (terminal_motion(total_push,
+                                            self.drag.coefficient(1.0, self.mass.total),
                                             m.total) if total_push else None)
         rep["type_probable"] = classify(rep)
         rep["anomalies"] = self.diagnose(rep)
@@ -374,6 +416,27 @@ class Simulation:
                            "VOILE. Le SU affiche pour ce reseau est un "
                            "PLANCHER, pas une estimation."),
                 "blocs": [list(pos)],
+            })
+        if self.wheels.count:
+            out.append({
+                "code": "F5.10", "gravite": "limite du modele",
+                "titre": "masse portee par roue approchee",
+                "detail": ("le moteur tire la masse portee de la matrice de "
+                           "masse inverse au point de contact ; faute de "
+                           "tenseur d'inertie complet (L6), elle est ici "
+                           "repartie a parts egales entre les %d roues."
+                           % self.wheels.count),
+                "blocs": [list(w.pos) for w in self.wheels.wheels[:8]],
+            })
+        if self.levitite.cells:
+            out.append({
+                "code": "F5.11", "gravite": "limite du modele",
+                "titre": "melange lent/rapide du levitite approche",
+                "detail": ("le facteur gaussien du moteur porte une correction "
+                           "d'etalement spatial de la grappe, ignoree ici : on "
+                           "garde exp(-1,5 (v/3)^2). L'ecart se voit surtout "
+                           "sur un vaisseau tres etale."),
+                "blocs": [list(p) for p in sorted(self.levitite.cells)[:8]],
             })
         for b in self.bearings.bearings:
             if not b.reliable and not b.contacts:

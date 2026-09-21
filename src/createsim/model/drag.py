@@ -41,16 +41,41 @@ class DragOrgan(Organ):
     def count(self) -> int:
         return len(self.cells)
 
-    def coefficient(self, pressure: float = 1.0) -> float:
-        """k de F = -k.v, a la pression donnee."""
+    def envelope_coefficient(self, pressure: float = 1.0) -> float:
+        """k de l'enveloppe seule, a la pression donnee.
+
+        Le moteur somme le `floating_scale` bloc par bloc (`totalScale`) ; tous
+        les blocs etanches portant 0,33, la somme se reduit ici a un produit.
+        """
         scale = self.tables.get("forces.drag_floating_scale")
         return scale * len(self.cells) * pressure
 
-    def report(self, pressure: float = 1.0) -> dict:
+    def universal_coefficient(self, mass: float) -> float:
+        """k equivalent de l'amortissement universel du moteur physique.
+
+        Rapier recoit `universal_drag` comme un TAUX par seconde applique a la
+        vitesse du corps : `v <- v / (1 + dt.c)`. Mon amortissement entre comme
+        un coefficient de force, ou le taux vaut k/m — d'ou la masse.
+
+        C'est le terme qui manquait, et il ne manquait pas d'un peu : sur le
+        c1_air_cruiser, 20 659 blocs pour 839 etanches, il divise la constante
+        de temps par 6,4.
+        """
+        return self.tables.get("pressure.universal_drag") * mass
+
+    def coefficient(self, pressure: float = 1.0, mass: float = 0.0) -> float:
+        """k total de F = -k.v : enveloppe + amortissement universel."""
+        return self.envelope_coefficient(pressure) + self.universal_coefficient(mass)
+
+    def report(self, pressure: float = 1.0, mass: float = 0.0) -> dict:
+        enveloppe = self.envelope_coefficient(pressure)
+        universel = self.universal_coefficient(mass)
         return {
             "blocs_etanches": self.count,
-            "coefficient": round(self.coefficient(pressure), 3),
-            "coefficient_niveau_mer": round(self.coefficient(1.0), 2),
+            "coefficient": round(enveloppe + universel, 3),
+            "coefficient_enveloppe": round(enveloppe, 3),
+            "coefficient_universel": round(universel, 3),
+            "coefficient_niveau_mer": round(self.envelope_coefficient(1.0), 2),
             "centre": [round(v, 2) for v in self.centre],
-            "modele": "lineaire F = -k.v",
+            "modele": "lineaire F = -k.v, enveloppe + amortissement Rapier",
         }
