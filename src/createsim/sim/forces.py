@@ -18,6 +18,7 @@ import math
 from dataclasses import dataclass
 
 from ..data.nbt import Pos
+from .integrator import TICKS_PER_SECOND
 
 Vec = tuple[float, float, float]
 
@@ -139,17 +140,25 @@ def propeller_forces(bearings, speeds: dict[Pos, float], tables,
                      rotation=None) -> list[Force]:
     """Poussee = voiles^1,5 x RPM x 0,2, appliquee au palier, selon son axe.
 
-    Le sens suit l'orientation du palier et le signe du regime. Mesure en jeu
-    (`data/mesures/jeu.json`) : les helices poussent bien le vaisseau vers
-    l'avant, la convention n'est donc pas a renverser. Reste a lever sur quelle
-    extremite de coque « l'avant » tombe pour le cachalot.
+    Le SENS ne suit pas le vecteur `facing`, contrairement a ce qu'on attendrait
+    — et c'est le piege que la mesure en jeu a revele.
+    `PropellerBearingBlockEntity.getDirectionIndependentSpeed()` multiplie le
+    regime par `FACING.getAxisDirection().getStep()` (+1 est/haut/sud,
+    -1 ouest/bas/nord) avant de porter le resultat sur le vecteur `facing` : le
+    produit vaut toujours l'axe POSITIF. Un palier tourne vers le nord et un
+    tourne vers le sud poussent donc dans le meme sens.
+
+    Ce qui renverse la poussee, c'est le signe du regime ou l'option a la
+    molette (`ScrollValue`, enum ThrustDirection) — jamais l'orientation du
+    bloc. Verifie en jeu sur le cargo : paliers « north », le vaisseau part vers
+    +z, a l'oppose des helices (`data/mesures/jeu.json`).
     """
     coef = tables.get("forces.propeller_bearing_thrust")
     exponent = tables.get("forces.propeller_sail_exponent")
     out: list[Force] = []
     for b in bearings:
         rpm = speeds.get(b.pos, 0.0)
-        vec = FACING_VEC.get(b.facing)
+        vec = b.thrust_axis
         if vec is None:
             continue
         # Une helice a l'arret produit une force NULLE, pas une force absente :
@@ -157,9 +166,11 @@ def propeller_forces(bearings, speeds: dict[Pos, float], tables,
         # d'etre rejouable.
         magnitude = ((b.sails ** exponent) * abs(rpm) * coef
                      if rpm and b.sails else 0.0)
-        sign = math.copysign(1.0, rpm) if rpm else 1.0
+        sign = (math.copysign(1.0, rpm) if rpm else 1.0) * b.handedness
         point = (b.pos[0] + 0.5, b.pos[1] + 0.5, b.pos[2] + 0.5)
         label = "helice %d voiles a %.0f tr/min" % (b.sails, abs(rpm))
+        if b.handedness < 0:
+            label += ", molette inversee"
         if not b.reliable:
             label += " (comptage incertain)"
         out.append(Force("helice",
@@ -507,3 +518,77 @@ def pitch_balance(mass: float, com: Vec, lift_forces: list[Force], tables,
         "couple_longitudinal": round(arm * total, 1),
         "sens": "cabre" if arm > 0.01 else ("pique" if arm < -0.01 else "neutre"),
     }
+
+
+# --- contact avec le plan de sol --------------------------------------------
+#: bande, en blocs, sous laquelle un sommet de coque est considere en appui.
+#: Apres remise a niveau le point le plus bas est exactement sur le plan ; cette
+#: bande ramasse tous ceux qui l'accompagnent.
+CONTACT_BAND = 0.15
+
+
+def ground_contact(hull, position, velocity, omega, com, rotation, floor: float,
+                   mass: float, friction: float, tables,
+                   others: list[Force] | None = None) -> list[Force]:
+    """Le sol porte la coque — et lui rend un COUPLE, donc une assiette.
+
+    Ce n'est PAS un ressort de penalite. Un ressort assez raide pour porter un
+    vaisseau avec un enfoncement decent donne, sur le c1_air_cruiser, un mode de
+    rotation a omega.dt = 6,4 : le pas de 1/20 s ne peut pas l'integrer, et le
+    vaisseau part en vrille. La raideur necessaire pour tenir le poids est hors
+    de portee d'un schema explicite a 20 Hz.
+
+    Le contact au repos est donc traite en CONTRAINTE. La reaction vaut
+    exactement ce qu'il faut pour annuler la resultante verticale descendante —
+    ni plus, sinon le vaisseau rebondit, ni moins, sinon il s'enfonce — et elle
+    s'applique au barycentre des appuis. Le couple qui en sort est celui du
+    poids autour du polygone de sustentation : le vaisseau bascule jusqu'a
+    ramener son centre de masse au-dessus de ses appuis, puis s'arrete. C'est
+    exactement « poser le vaisseau », et c'est stable par construction —
+    omega.dt vaut 0,14 sur le cruiser au lieu de 6,4.
+    """
+    if floor == float("-inf") or mass <= 0:
+        return []
+    points = hull.points
+    if not len(points):
+        return []
+
+    import numpy as np
+
+    centre = np.asarray(com, dtype=float)
+    rel = points - centre
+    if rotation is not None:
+        rel = rel @ np.asarray(rotation, dtype=float).T
+    height = rel[:, 1] + float(position[1])
+    touching = height <= floor + CONTACT_BAND
+    count = int(touching.sum())
+    if not count:
+        return []
+
+    # Ce que le sol doit reprendre : la resultante verticale de tout le reste.
+    descente = -sum(f.vector[1] for f in (others or []))
+    if descente <= 0.0:
+        return []                      # le vaisseau decolle : plus d'appui
+
+    appui = rel[touching] + centre
+    barycentre = tuple(float(v) for v in appui.mean(axis=0))
+    out = [Force("contact", (0.0, descente, 0.0), barycentre,
+                 "sol : %d appui(s) portant %.0f" % (count, descente))]
+
+    # Le frottement du sol, borne par Coulomb. Sans lui un vaisseau pose glisse
+    # indefiniment : rien d'autre ne l'arrete a l'horizontale.
+    grip = fudge_friction(friction, tables)
+    plane = (float(velocity[0]), float(velocity[2]))
+    norm = math.hypot(*plane)
+    if norm > 1e-6:
+        # Borne aussi par « ce qu'il faut pour arreter net » : une force de
+        # frottement qui depasse renverserait la vitesse au lieu de l'annuler.
+        brake = min(grip * descente, mass * norm * TICKS_PER_SECOND)
+        # Famille « contact » et pas « frottement » : les frottements LINEAIRES
+        # en v entrent dans l'integrateur par leur coefficient, celui de Coulomb
+        # ne l'est pas. Le ranger avec eux le ferait compter deux fois.
+        out.append(Force("contact", (-plane[0] / norm * brake, 0.0,
+                                     -plane[1] / norm * brake),
+                         barycentre,
+                         "sol : glissement freine a %.0f%%" % (grip * 100)))
+    return out

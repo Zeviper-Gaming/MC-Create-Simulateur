@@ -31,5 +31,5 @@
    "valeur": 0
   }
  ],
- "notes": "Le scenario qui justifie des commandes HORODATEES : le meme jeu de reglages sans la date ne decrit pas cette manoeuvre. Le sol est actif pour que la chute se termine quelque part. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
+ "notes": "Le scenario qui justifie des commandes HORODATEES : le meme jeu de reglages sans la date ne decrit pas cette manoeuvre. Le sol est actif pour que la chute se termine quelque part. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires. Traces refaites : le sol porte desormais le BAS DE COQUE et lui rend un couple et un frottement, et le sens de rotation des reseaux est ancre sur les regimes enregistres."
 }

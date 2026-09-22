@@ -32,6 +32,7 @@ from .editor import DiffInset, EditorPanel
 from .picking import pick, ray_from_pixel
 from .curves import CurvePanel
 from .cut import CutBar
+from .ground import build_ground_mesh
 from .diagnostics import DiagnosticsPanel
 from .hud import Hud
 from .menus import fill_recent, install_menus
@@ -84,6 +85,8 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.selected = None
         self.selected_normal = None
         self.baseline: Baseline | None = None
+        #: cote locale de la grille de sol, pour ne la refaire que si elle bouge
+        self._ground_y: float | None = None
         self._diff_ticks = 0
         overlay = self._overlay()
         # La geometrie des poches est calculee UNE fois : elle ne change qu'a
@@ -255,6 +258,7 @@ class VehicleWindow(QtWidgets.QMainWindow):
     def _refresh_scene(self, rebuild_kinetic: bool = True) -> None:
         # F3.4 : l'attitude reelle du vehicule, appliquee au rendu.
         self.view.set_attitude(self.sim.state.orientation, self.sim.mass.com)
+        self._refresh_ground()
         overlay = self._overlay()
         self.overlay_data = overlay
         self.view.set_overlay(overlay)
@@ -821,6 +825,29 @@ class VehicleWindow(QtWidgets.QMainWindow):
     def _cut_changed(self, axis, offset: float, reverse: bool = False) -> None:
         """Repercute la barre de coupe sur la vue."""
         self.view.set_cut(axis, offset, reverse)
+
+    def _refresh_ground(self) -> None:
+        """La grille de sol, a la cote ou le vaisseau la rencontre.
+
+        La scene est dessinee dans les coordonnees de la STRUCTURE : le vaisseau
+        n'y bouge pas, c'est le sol qui monte vers lui quand il descend. On
+        convertit donc l'altitude du plan en cote locale.
+        """
+        options = self.sim.options
+        if not options.ground_enabled:
+            if self._ground_y is not None:
+                self._ground_y = None
+                self.view.set_ground(None)
+            return
+        com = self.sim.mass.com
+        local = options.ground_altitude - (self.sim.state.position[1] - com[1])
+        # On ne reconstruit que si la grille a bouge d'un dixieme de bloc :
+        # sinon c'est un maillage neuf a chaque tick, pour rien.
+        if self._ground_y is not None and abs(local - self._ground_y) < 0.1:
+            return
+        self._ground_y = local
+        self.view.set_ground(
+            build_ground_mesh(self.model.structure.size, com, local))
 
     def _show_layer(self, layer: str) -> None:
         self.hud.mode = ("reseau cinetique, teinte par regime"

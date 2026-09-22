@@ -71,8 +71,10 @@ def level1_concordance(tables: Tables, fixtures=None) -> list[dict]:
         out.append({
             "nom": "niveau 1 - concordance %s" % path.stem,
             "passe": passed,
-            "detail": "%s regimes retrouves a %.2f tr/min pres%s"
+            "detail": "%s regimes retrouves a %.2f tr/min pres, %s dans le bon "
+                      "sens%s"
                       % (result["concordance_solveur"], TOLERANCE_RPM,
+                         result["concordance_sens"],
                          "" if passed else "  ECARTS: %s" % result["ecarts"][:3]),
             "mesure": result,
         })

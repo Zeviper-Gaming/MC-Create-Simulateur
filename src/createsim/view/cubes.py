@@ -349,6 +349,10 @@ class CubeView(QOpenGLWidget):
         self.uniforms: dict[str, dict[str, int]] = {}
         self.batches: dict[str, _Batch] = {}
         self._last_pos = None
+        #: le plan de sol, dans le repere du MONDE : il ne tourne pas avec le
+        #: vaisseau et la coupe ne le coupe pas
+        self.ground = None
+        self._last_pos = None
         #: l'attitude du vaisseau, appliquee aux geometries qui lui sont liees
         #: (blocs, gaz, surbrillance). Les fleches de force, elles, sont deja
         #: dans le repere du monde : les tourner ferait pencher la gravite.
@@ -432,6 +436,15 @@ class CubeView(QOpenGLWidget):
         # Le vaisseau porte son attitude ; la surimpression reste dans le monde.
         ship = matrix * self.model
 
+        # 0. le sol, avant tout le reste : il est derriere, et le vaisseau
+        #    doit s'y poser visiblement. Ni cull (on le voit par en dessous),
+        #    ni rotation (c'est le monde), ni coupe.
+        gl.glEnable(GL_DEPTH_TEST)
+        gl.glDisable(GL_BLEND)
+        if "sol" in self.batches:
+            gl.glDisable(GL_CULL_FACE)
+            self._draw("sol", "blocs", gl, matrix, cut=False)
+
         # 1. les blocs, opaques
         gl.glEnable(GL_DEPTH_TEST)
         gl.glEnable(GL_CULL_FACE)
@@ -478,14 +491,17 @@ class CubeView(QOpenGLWidget):
             gl.glDisable(GL_BLEND)
         self._tick_fps()
 
-    def _draw(self, batch_name: str, program_name: str, gl, matrix) -> None:
+    def _draw(self, batch_name: str, program_name: str, gl, matrix,
+              cut: bool = True) -> None:
         batch = self.batches.get(batch_name)
         if batch is None:
             return
         program = self.programs[program_name]
         program.bind()
         program.setUniformValue(self.uniforms[program_name]["mvp"], matrix)
-        program.setUniformValue(self.uniforms[program_name]["cut"], self.cut)
+        program.setUniformValue(
+            self.uniforms[program_name]["cut"],
+            self.cut if cut else QtGui.QVector4D(0.0, 0.0, 0.0, 1.0e9))
         batch.draw(gl)
         program.release()
 
@@ -596,6 +612,26 @@ class CubeView(QOpenGLWidget):
                 continue
             colors = np.tile(np.asarray(tint, np.float32), (batch.count, 1))
             batch.update_colors(colors.ravel())
+        self.doneCurrent()
+        self.update()
+
+    def set_ground(self, mesh) -> None:
+        """Pose ou retire la grille de sol. `None` l'efface."""
+        self.ground = mesh
+        if not self.isValid():
+            return
+        self.makeCurrent()
+        if mesh is None or not mesh.vertices:
+            self.batches.pop("sol", None)
+        else:
+            batch = self.batches.get("sol")
+            if batch is None:
+                batch = _Batch(mesh.positions, mesh.normals, mesh.colors)
+                batch.upload(self.programs["blocs"])
+                self.batches["sol"] = batch
+            else:
+                batch.update(mesh.positions, mesh.normals, mesh.colors,
+                             self.programs["blocs"])
         self.doneCurrent()
         self.update()
 

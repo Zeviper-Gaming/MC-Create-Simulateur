@@ -84,10 +84,12 @@ def attached_towards(name: str, props: dict, direction: str) -> bool:
 
 class Bearing:
     __slots__ = ("pos", "name", "facing", "step", "start", "rotor", "sails",
-                 "contacts", "reliable", "assembled", "last_generated")
+                 "contacts", "reliable", "assembled", "last_generated",
+                 "handedness")
 
     def __init__(self, pos: Pos, name: str, facing: str | None,
-                 assembled: bool = False, last_generated: float = 0.0):
+                 assembled: bool = False, last_generated: float = 0.0,
+                 handedness: int = 1):
         self.pos = pos
         self.name = name
         self.facing = facing
@@ -102,10 +104,28 @@ class Bearing:
         # inconnaissable, et `LastGenerated` est la seule verite disponible.
         self.assembled = assembled
         self.last_generated = last_generated
+        #: +1 ou -1 : l'option a la molette du palier d'helice (`ScrollValue`,
+        #: enum ThrustDirection RIGHT_HANDED / LEFT_HANDED). C'est ELLE qui
+        #: renverse la poussee, pas le sens du bloc.
+        self.handedness = handedness
 
     @property
     def sails_known(self) -> bool:
         return not self.assembled
+
+    @property
+    def thrust_axis(self) -> tuple[float, float, float] | None:
+        """L'axe POSITIF du palier — la direction ou sa poussee s'exerce.
+
+        `PropellerBearingBlockEntity.getDirectionIndependentSpeed()` multiplie
+        le vecteur `facing` par `FACING.getAxisDirection().getStep()`. Le
+        produit vaut toujours l'unite positive de l'axe : un palier tourne vers
+        le nord et un tourne vers le sud poussent dans le MEME sens. On inverse
+        par le regime ou par la molette, jamais en retournant le bloc.
+        """
+        if self.step is None:
+            return None
+        return tuple(abs(c) for c in self.step)
 
     def in_front(self, q: Pos) -> bool:
         if self.step is None or self.start is None:
@@ -116,6 +136,11 @@ class Bearing:
     def report(self) -> dict:
         out = {
             "pos": list(self.pos), "bloc": self.name, "orientation": self.facing,
+            "sens_de_poussee": ("axe %s positif%s"
+                                % ("xyz"[self.step.index(max(self.step,
+                                                             key=abs))],
+                                   "" if self.handedness > 0 else ", molette inversee")
+                                if self.step else None),
             "voiles": None if self.assembled else self.sails,
             "blocs_rotor": len(self.rotor),
             "comptage_fiable": self.reliable and not self.assembled,
@@ -195,7 +220,9 @@ class BearingOrgan(Organ):
                 nbt = block.get("nbt") or {}
                 b = Bearing(pos, name, block["props"].get("facing"),
                             assembled=bool(nbt.get("Running")),
-                            last_generated=float(nbt.get("LastGenerated") or 0.0))
+                            last_generated=float(nbt.get("LastGenerated") or 0.0),
+                            handedness=-1 if int(nbt.get("ScrollValue") or 0) == 1
+                            else 1)
                 if not b.assembled:
                     self._trace(b)
                 self.bearings.append(b)

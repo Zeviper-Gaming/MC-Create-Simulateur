@@ -116,10 +116,14 @@ def test_le_modele_reproduit_la_mesure(mesure):
         poussees = F.propeller_forces(bearings, speeds, sim.tables)
         assert poussees
         for force, bearing in zip(poussees, bearings):
-            axe = F.FACING_VEC[bearing.facing]
+            # L'axe POSITIF du palier, jamais son vecteur `facing` : c'est
+            # exactement ce que la mesure a corrige.
+            axe = tuple(abs(c) for c in F.FACING_VEC[bearing.facing])
             produit = sum(a * b for a, b in zip(force.vector, axe))
-            assert produit > 0, ("%s : la poussee doit suivre l'axe du palier"
-                                 % mesure["id"])
+            attendu = bearing.handedness
+            assert produit * attendu > 0, (
+                "%s : a regime positif, la poussee va vers l'axe positif du "
+                "palier, renversee seulement par la molette" % mesure["id"])
     else:
         pytest.fail("grandeur inconnue : %s" % grandeur)
 
@@ -128,8 +132,15 @@ def test_une_reserve_est_tenue_explicite(mesure):
     """Ce qui n'est pas tranche doit le dire, et cesser de le dire une fois
     tranche — une reserve qui survit a sa levee est aussi trompeuse qu'une
     reserve absente."""
-    if mesure["grandeur"] == "convention_poussee":
-        assert mesure.get("reserve"), "le sens absolu n'est pas encore tranche"
+    if mesure["id"] == "cachalot-v4-sens-de-poussee":
+        # La reserve tient toujours, mais elle a change de nature : elle dit
+        # maintenant POURQUOI elle est levee, au lieu de poser la question.
+        assert any("bytecode" in ligne for ligne in mesure["reserve"]), (
+            "la reserve du cachalot est levee par la lecture du bytecode")
+    if mesure["id"] == "cargo-sens-de-poussee":
+        assert mesure.get("reserve"), (
+            "les deux helices du cargo s'annulent dans le modele : tant que la "
+            "contradiction tient, elle doit etre ecrite")
     if mesure["id"] == "cachalot-v4-helice-centrale-a-fond":
         assert not mesure.get("reserve"), (
             "la loi par voile est departagee depuis la lecture a 12 voiles")

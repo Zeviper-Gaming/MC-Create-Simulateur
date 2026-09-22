@@ -80,6 +80,12 @@ def cmd_run(args) -> int:
           % (last.get("gaz_total", 0.0), last.get("gaz_capacite", 0)))
     print("pression   : %8.4f" % last.get("pression", 0.0))
     print("regime max : %8.2f tr/min" % last.get("regime_max", 0.0))
+    if sim.options.ground_enabled:
+        bas = sim.lowest_point()
+        print("bas de coque: %8.2f  (sol a %.2f)%s"
+              % (bas if bas is not None else float("nan"),
+                 sim.options.ground_altitude,
+                 "  POSE" if sim.state.on_ground else ""))
     attitude = sim.report().get("attitude") or {}
     if attitude.get("active"):
         print("assiette   : %8.2f deg de tangage, %.2f de roulis"

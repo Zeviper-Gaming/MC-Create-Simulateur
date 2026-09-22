@@ -11,7 +11,7 @@ Rapports d'apres Create `RotationPropagator.getRotationSpeedModifier()`.
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from ..data.nbt import Pos, SIX, axis_of
 from .vehicle import Organ
@@ -47,6 +47,30 @@ LARGE_COGS = frozenset(("create:large_cogwheel",
 ANALOG_TRANSMISSION = "simulated:analog_transmission"
 
 
+def gearbox_modifier(entree: Pos, sortie: Pos) -> int:
+    """Le signe qu'une boite de vitesses impose, `RotationPropagator` offset 31.
+
+        meme axe          : +1 si meme direction, -1 sinon
+        axes differents   : -1 si les deux directions d'axe s'accordent, +1 sinon
+
+    Autrement dit une boite RENVERSE la rotation en ligne droite, et croise les
+    sens en perpendiculaire. `entree` est la direction de la boite VERS sa
+    source (`getSourceFacing`), `sortie` celle vers le bloc entraine.
+
+    Le signe depend donc de la face par ou la rotation ENTRE, pas seulement de
+    l'arete : deux boites identiques cote a cote n'ont pas le meme effet selon
+    d'ou vient le mouvement. C'est ce qui manquait au solveur, et ce qui lui
+    faisait rendre 24 regimes de signe oppose au releve sur le cachalot.
+    """
+    axe_e = next((i for i in range(3) if entree[i]), None)
+    axe_s = next((i for i in range(3) if sortie[i]), None)
+    if axe_e is None or axe_s is None:
+        return 1
+    if axe_e == axe_s:
+        return 1 if entree[axe_e] == sortie[axe_s] else -1
+    return -1 if (entree[axe_e] > 0) == (sortie[axe_s] > 0) else 1
+
+
 class Source:
     """Une source de rotation, et ce dont son regime depend."""
 
@@ -80,6 +104,16 @@ class KineticOrgan(Organ):
         self.recorded: dict[Pos, float] = {}
         self.transmission_sides: dict[tuple[Pos, Pos], str] = {}
         self.sensitive: frozenset[Pos] = frozenset()
+        #: positions des boites de vitesses : leur signe depend de la face
+        #: d'entree, donc il ne tient pas dans le poids d'une arete
+        self.gearboxes: frozenset[Pos] = frozenset()
+        #: signe a injecter a chaque source pour que le reseau tourne dans le
+        #: sens que le jeu a enregistre. Voir `_build_orientation`.
+        self.source_sign: dict[Pos, int] = {}
+        #: index des reseaux dont le SENS absolu est ancre par un releve
+        self.oriented: set[int] = set()
+        #: reseaux ou le releve se contredit lui-meme (topologie douteuse)
+        self.sign_conflicts: list[dict] = []
 
     # -- invalidation ------------------------------------------------------
     def affected_by(self, pos: Pos) -> bool:
@@ -154,11 +188,14 @@ class KineticOrgan(Organ):
                     adj[p].append((q, 1.0))
 
         self.adj = dict(adj)
+        self.gearboxes = frozenset(p for p, b in self.nodes.items()
+                                   if "gearbox" in b["name"])
         self.transmission_sides = sides
         self._build_components()
         self._build_sources()
         self._build_sensitive()
         self.recorded = self._recorded_speeds()
+        self._build_orientation()
 
     def _edge_ratio(self, p: Pos, q: Pos, d):
         """Rapport de vitesse de p vers q, et le cote de transmission traverse.
@@ -334,6 +371,92 @@ class KineticOrgan(Organ):
                                            p[1] + off.get("y", 0),
                                            p[2] + off.get("z", 0)))
         self.sensitive = frozenset(sensitive)
+
+    def turn_factor(self, cur: Pos, previous: Pos | None, nxt: Pos) -> int:
+        """Le signe supplementaire impose par `cur` quand il entraine `nxt`.
+
+        Neutre partout sauf sur une boite de vitesses, dont la regle depend de
+        la face d'entree."""
+        if previous is None or cur not in self.gearboxes:
+            return 1
+        entree = tuple(previous[i] - cur[i] for i in range(3))
+        sortie = tuple(nxt[i] - cur[i] for i in range(3))
+        return gearbox_modifier(entree, sortie)
+
+    def _relative_signs(self, start: Pos) -> dict[Pos, int]:
+        """Sens de rotation de chaque bloc, relativement a `start`.
+
+        Le point de depart n'est PAS arbitraire : une boite de vitesses impose
+        un signe qui depend de la face par ou la rotation entre, donc l'arbre
+        de propagation change le resultat. On part de la source, comme le jeu —
+        partir d'un coin du reseau donnait 27 signes faux sur 53.
+        """
+        rel: dict[Pos, int] = {start: 1}
+        came_from: dict[Pos, Pos | None] = {start: None}
+        queue = deque([start])
+        while queue:
+            cur = queue.popleft()
+            for nxt, ratio in self.adj.get(cur, ()):
+                # Le facteur d'une transmission analogique est toujours positif :
+                # il change le regime, jamais le sens. Seul le signe du rapport
+                # compte ici, plus celui que la boite de vitesses impose.
+                turn = (rel[cur] * (1 if ratio > 0 else -1)
+                        * self.turn_factor(cur, came_from[cur], nxt))
+                if nxt in rel:
+                    continue
+                rel[nxt] = turn
+                came_from[nxt] = cur
+                queue.append(nxt)
+        return rel
+
+    def _build_orientation(self) -> None:
+        """Ancre le SENS absolu de chaque reseau sur les regimes enregistres.
+
+        Le solveur retrouvait les regimes a 0,5 tr/min pres mais partait de
+        `+rpm` a chaque source : le sens absolu d'un reseau etait donc arbitraire.
+        Invisible tant que rien n'en dependait — la poussee d'une helice en
+        depend, parce que le palier porte une option « molette » qui renverse
+        SA poussee. Deux helices du cargo, l'une en RIGHT_HANDED et l'autre en
+        LEFT_HANDED, s'annulaient au lieu de s'ajouter.
+
+        Quand le fichier a ete sauvegarde moteur tournant, il porte le sens
+        reel : on s'y ancre. Sinon le sens reste inconnu, et le reseau le dit
+        plutot que de faire semblant (F5.13).
+        """
+        self.source_sign = {}
+        self.oriented = set()
+        self.sign_conflicts = []
+        for index in range(len(self.components)):
+            sources = [s for s in self.sources if self.comp_of.get(s.pos) == index]
+            if not sources:
+                continue
+            # le meme ordre que le solveur : c'est cette source qui enracine
+            # l'arbre, et l'arbre decide des signes
+            primary = max(sources, key=lambda s: abs(s.rpm))
+            rel = self._relative_signs(primary.pos)
+
+            pour = contre = 0
+            for pos, measured in self.recorded.items():
+                turn = rel.get(pos)
+                if turn is None:
+                    continue
+                if (measured > 0) == (turn > 0):
+                    pour += 1
+                else:
+                    contre += 1
+            if pour or contre:
+                self.oriented.add(index)
+                sign = 1 if pour >= contre else -1
+                if pour and contre:
+                    # Le releve se contredit : notre topologie n'a pas la meme
+                    # alternance que le jeu quelque part. On le DIT.
+                    self.sign_conflicts.append({
+                        "reseau": index, "accord": max(pour, contre),
+                        "desaccord": min(pour, contre)})
+            else:
+                sign = 1
+            for s in sources:
+                self.source_sign[s.pos] = sign * rel.get(s.pos, 1)
 
     def _recorded_speeds(self) -> dict[Pos, float]:
         """Regimes reellement mesures par le jeu, quand la structure a ete

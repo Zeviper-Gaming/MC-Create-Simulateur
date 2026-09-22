@@ -66,5 +66,5 @@
    "valeur": 8
   }
  ],
- "notes": "9 puis 8 : 7680 su sur 8192, puis 8960 et le reseau disjoncte. Ce vaisseau n'est pas dans le depot ; le scenario est ignore quand il est absent, comme le c1_air_cruiser des tests. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
+ "notes": "9 puis 8 : 7680 su sur 8192, puis 8960 et le reseau disjoncte. Ce vaisseau n'est pas dans le depot ; le scenario est ignore quand il est absent, comme le c1_air_cruiser des tests. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires. Traces refaites : le sol porte desormais le BAS DE COQUE et lui rend un couple et un frottement, et le sens de rotation des reseaux est ancre sur les regimes enregistres."
 }

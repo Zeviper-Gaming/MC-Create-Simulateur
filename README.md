@@ -166,10 +166,14 @@ visible immédiatement.
 | `A` `C` `H` `P` `I` | avant, côté, dessus, arrière, isométrique |
 | `R` | recadrer automatiquement |
 
+`--sol 0` allume le plan de sol : le véhicule s'y pose, bascule sur ses appuis et
+s'arrête. `--friction` règle l'adhérence de la coque au sol.
+
 Sous la vue, la **barre de coupe** ouvre la coque : un axe, un curseur, et un bouton
 qui retourne le sens. Le plan est lié au vaisseau, donc il penche avec lui ; les flèches
-de force ne sont jamais coupées. Dans l'onglet **Commandes**, la section Situation permet
-de débrancher le tangage et le roulis.
+de force ne sont jamais coupées. Dans l'onglet **Commandes**, la section Situation allume le
+plan de sol — une grille apparaît sous le vaisseau — et permet de débrancher le tangage
+et le roulis.
 
 `--bench 5` mesure la cadence pendant cinq secondes puis sort.
 
@@ -178,7 +182,8 @@ de débrancher le tangage et le roulis.
 Ce n'est **pas un éditeur de construction** : on part toujours d'un véhicule existant.
 Ce n'est **pas un clone de Minecraft** : pas de monde, pas de terrain, pas de multijoueur.
 Ce n'est **pas un moteur de collision** : le véhicule évolue en espace libre, au-dessus
-d'un plan de sol optionnel. Il ne simule pas ce qui n'est pas mécanique : ni logistique
+d'un plan de sol optionnel — sur lequel il se pose pour de bon, mais qui reste un plan
+horizontal unique, sans terrain ni obstacle. Il ne simule pas ce qui n'est pas mécanique : ni logistique
 d'items, ni fluides, ni électricité, ni recettes.
 
 ---
@@ -416,6 +421,128 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
+
+## Poser le vaisseau : le sol devient un vrai plan
+
+Le plan de sol existait depuis L0, mais il ne portait pas grand-chose. Trois
+défauts, dont le dernier n'est apparu qu'en essayant de s'en servir.
+
+**Il portait le centre de masse.** Le plancher s'arrêtait à `sol + com.y`, avec
+l'hypothèse tacite que le bas de la coque se trouvait à la cote 0 de la
+structure. Le `cargo_airship` commence à **y = 3** : il s'enterrait de trois
+blocs. Le simulateur connaît maintenant la **peau** du vaisseau — les huit coins
+de chaque bloc exposé, 11 588 sommets sur le cargo, 33 842 sur le cruiser. Sous
+une rotation quelconque, le point le plus bas d'un solide est l'un de ces
+sommets ; un coin enfermé à l'intérieur de la coque ne peut jamais l'être. Le
+calcul est **paresseux** : tant que personne n'allume le sol, il ne coûte rien,
+et une édition se contente de jeter le cache.
+
+**Il ne rendait aucun couple.** C'était la simplification assumée de L6 : la
+rotation était *gelée* au contact, faute de quoi un vaisseau posé tournait
+autour de son centre de masse jusqu'à se retourner. Elle disparaît.
+
+### Pourquoi ce n'est pas un ressort
+
+La première version était un ressort de pénalité — la solution évidente, et la
+mauvaise. Pour porter un vaisseau avec un enfoncement décent il faut une
+raideur `k = m g / δ`, et le mode de **rotation** qui en découle vaut :
+
+```
+cargo_airship     ω·dt = 1,57   (limite)
+cachalot_volant   ω·dt = 2,48   instable
+c1_air_cruiser    ω·dt = 6,36   explose — le vaisseau part en vrille
+```
+
+Un pas de 1/20 s ne peut pas intégrer ça, et assouplir le ressort assez pour
+qu'il tienne donnerait **11 blocs** d'enfoncement au cruiser. La raideur
+nécessaire pour porter le poids est hors de portée d'un schéma explicite à
+20 Hz : il ne fallait pas un ressort.
+
+Le contact au repos est donc une **contrainte**. La réaction vaut exactement ce
+qu'il faut pour annuler la résultante verticale descendante — ni plus, sinon le
+vaisseau rebondit, ni moins, sinon il s'enfonce — et elle s'applique au
+**barycentre des appuis**. Le couple qui en sort est celui du poids autour du
+polygone de sustentation : le vaisseau bascule jusqu'à ramener son centre de
+masse au-dessus de ses appuis, puis s'arrête. `ω·dt` vaut alors **0,14** sur le
+cruiser au lieu de 6,36.
+
+S'y ajoute un frottement de Coulomb, borné deux fois : par `μN`, et par « ce
+qu'il faut pour arrêter net » — une force de frottement qui dépasse renverserait
+la vitesse au lieu de l'annuler. C'est lui qui fait tomber la glissade du
+`cachalot_volant_v4` de 49,4 blocs à 1,3 : une coque qui traîne sur le sol ne
+patine pas.
+
+```
+cachalot_volant_v3, lâché de 40 m, ballons vides
+  t =   60   bas de coque 0,111   posé   tangage -0,32°  roulis -2,78°
+  t =  240   bas de coque 0,074   posé   tangage  0,24°  roulis -0,03°
+  t = 4000   bas de coque 0,050   posé   tangage -0,29°  roulis -0,08°
+```
+
+### Et il se voit
+
+Une grille horizontale sous le vaisseau, dans le repère du **monde** : elle ne
+tourne pas avec la coque et le plan de coupe ne la coupe pas. Des lignes, pas
+une dalle — une dalle opaque cacherait le train d'atterrissage au moment précis
+où on le regarde. Ses lignes tombent sur des cotes rondes, sinon une grille qui
+glisse avec le vaisseau ne dirait plus rien de la distance parcourue.
+
+## Le sens de poussée d'une hélice, et ce qu'il a révélé
+
+La mesure en jeu était simple : **le cargo part à l'opposé de l'hélice**. Le
+bytecode donne mieux que le signe, il donne la règle.
+
+```java
+getDirectionIndependentSpeed() = FACING.getAxisDirection().getStep()   // +1 est/haut/sud, −1 ouest/bas/nord
+                               × rotationSpeed × 10/3                   // ⇒ le régime de Create
+                               × (ScrollValue == 1 ? −1 : +1)           // molette, enum ThrustDirection
+getThrust() = voiles^1,5 × cette vitesse × 0,2                          // portée par le vecteur facing
+```
+
+`facing × step(facing)` vaut **toujours l'axe positif**. Un palier tourné vers le
+nord et un tourné vers le sud poussent donc du **même** côté : on inverse une
+hélice par le sens de rotation ou par la molette, jamais en retournant le bloc.
+Le module, lui, était déjà juste — le facteur 10/3 et les degrés par tick
+s'annulent exactement.
+
+### Le défaut que ça a mis au jour
+
+La poussée dépend du **signe** du régime. Or le solveur ne le reproduisait pas :
+il partait de `+rpm` à chaque source, et le sens absolu d'un réseau était
+arbitraire. Invisible tant que rien n'en dépendait — la concordance de niveau 1
+comparait des valeurs absolues. Deux causes, toutes deux corrigées :
+
+**La boîte de vitesses avait une règle de signe, et on ne l'appliquait pas.**
+`RotationPropagator.getAxisModifier`, offset 31 :
+
+```
+même axe        : +1 si même direction, −1 sinon      → une boîte RENVERSE en ligne droite
+axes différents : −1 si les deux directions d'axe s'accordent, +1 sinon
+```
+
+Le signe dépend donc de la face par où la rotation **entre**, pas seulement de
+l'arête : il ne tient pas dans le poids d'une arête, et deux boîtes identiques
+côte à côte n'ont pas le même effet selon d'où vient le mouvement.
+
+**L'ancrage partait du mauvais nœud.** Puisque le signe dépend du chemin, l'arbre
+de propagation change le résultat : il faut partir de la **source**, comme le
+jeu. Enraciné sur un coin du réseau, le cachalot donnait 27 signes faux sur 53 ;
+enraciné sur son moulin, **0 sur 53**.
+
+Le sens absolu, lui, s'ancre sur les régimes que le jeu a enregistrés — la même
+vérité terrain qui sert déjà à la concordance, étendue du module au signe.
+
+```
+                     avant      après
+cargo_airship         4/8        0/8    signes opposés au relevé
+cachalot_volant_v3   24/53       0/53
+c1_air_cruiser        4/18       4/18   ← signalé, pas masqué (F5.14)
+```
+
+Quand le fichier a été sauvegardé moteur à l'arrêt, il n'y a rien à quoi
+s'ancrer : le réseau le **dit** au lieu de faire semblant (F5.13), et la
+concordance de niveau 1 publie désormais les deux scores — `53/53 régimes
+retrouvés à 0,51 tr/min près, 53/53 dans le bon sens`.
 
 ## L6 : le vaisseau penche pour de vrai
 
@@ -992,7 +1119,8 @@ Le logiciel doit le dire plutôt que de produire un chiffre faux.
 
 | Limite | Conséquence | Atténuation |
 |---|---|---|
-| Rotation au contact du sol | un vaisseau posé ne bascule plus du tout | le sol est une fonction hauteur, pas un moteur de contact ; le vol libre tourne normalement |
+| Contact au sol | un seul plan horizontal, pas de terrain ni d'obstacle | le vaisseau s'y pose vraiment : appuis réels, couple, frottement |
+| Sens de rotation non ancré | sur un fichier sauvegardé moteur à l'arrêt, le sens absolu d'un réseau est une convention | signalé (F5.13) ; le module de la poussée reste juste |
 | Terme gyroscopique explicite | une rotation rapide **sans aucun** amortissement finirait par diverger | `universal_drag` s'applique toujours et l'éteint avant ; garde-fou sur les valeurs non finies |
 | Amortissement angulaire | seule l'enveloppe le rend | voiles, levitite et roues ont un bras, marginal devant l'enveloppe |
 | Flottaison sur l'eau | les bateaux ne flottent pas | masse, cinétique et propulsion restent valides |
@@ -1000,7 +1128,8 @@ Le logiciel doit le dire plutôt que de produire un chiffre faux.
 | Comptage des voiles | heuristique bornée au demi-espace avant du palier | drapeau de fiabilité (F6.9) |
 | Collisions | traverse les obstacles | plan de sol optionnel seulement |
 | Mods tiers | masse par défaut de 1,0 | barre d'erreur affichée (F5.8) |
-| Sens de poussée d'une hélice | convention orientation × signe du régime | à confirmer par une mesure en jeu |
+| Sens de poussée d'une hélice | établi au bytecode : axe positif du palier × signe du régime × molette | mesuré en jeu sur le cargo ; reste une contradiction sur ses deux hélices, écrite dans `data/mesures/jeu.json` |
+| Signe de rotation du c1_air_cruiser | 4 relevés sur 18 tournent à l'inverse du calcul | signalé comme anomalie grave (F5.14), pas masqué |
 
 Le solveur cinétique reste incomplet sur sept régimes de la flotte, et la concordance
 affichée est le garde-fou : le rapport publie le score au lieu de le masquer. Deux

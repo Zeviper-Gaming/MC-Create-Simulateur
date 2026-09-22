@@ -117,27 +117,74 @@ def test_le_couple_net_ecarte_le_poids(sim):
     assert avec == pytest.approx(sans, abs=1e-6)
 
 
-def test_le_sol_empeche_la_traversee(cargo):
-    """Le vaisseau part a vide, tombe, se pose, puis redecolle une fois rempli.
+def test_le_sol_porte_le_bas_de_coque_et_pas_le_centre_de_masse(cargo):
+    """Le vaisseau part a vide, tombe, SE POSE, puis redecolle une fois rempli.
 
-    Ce qui est verifie ici, c'est le plancher : le plan de sol n'est pas un
-    moteur de collision, mais rien ne doit passer au travers.
+    Ce qui est verifie ici, c'est sur quoi le vaisseau repose. Le plancher
+    d'avant portait le centre de masse, avec l'hypothese tacite que le bas de
+    coque se trouvait a la cote 0 de la structure. Le cargo commence a y = 3 :
+    il s'enterrait donc de trois blocs.
     """
     sim = Simulation(cargo, SimOptions(altitude=60.0, initial_gas="vide",
                                        ground_enabled=True, ground_altitude=10.0))
-    # le sol porte le point le plus bas : le centre de masse s'arrete plus haut
-    plancher = 10.0 + sim.mass.com[1]
-    assert sim.state.altitude > plancher, "le depart doit etre au-dessus du sol"
+    coque = cargo.organ("coque")
+    assert coque.lowest_local() == pytest.approx(3.0), (
+        "le cargo ne commence pas a la cote 0 — c'est tout l'interet du test")
+
+    assert sim.lowest_point() > 10.0, "le depart doit etre au-dessus du sol"
     pose = False
     creux = float("inf")
     for _ in range(400):
         sim.step()
-        creux = min(creux, sim.state.altitude)
+        bas = sim.lowest_point()
+        creux = min(creux, bas)
         pose = pose or sim.state.on_ground
-        assert sim.state.altitude >= plancher - 1e-9, "le sol a ete traverse"
+        assert bas >= 10.0 - 1e-6, "le sol a ete traverse"
     assert pose, "le vaisseau a vide aurait du toucher le sol"
-    assert creux == pytest.approx(plancher, abs=1e-6)
-    assert sim.state.altitude > plancher, "il doit redecoller une fois rempli"
+    assert creux == pytest.approx(10.0, abs=1e-3), "il doit toucher, pas friser"
+    assert sim.lowest_point() > 10.5, "il doit redecoller une fois rempli"
+
+
+def test_un_vaisseau_pose_se_stabilise_sur_ses_appuis(cachalot_model):
+    """« Poser le vaisseau » : il tombe, touche, bascule sur son polygone de
+    sustentation et s'arrete — au lieu de rester fige dans l'assiette qu'il
+    avait en l'air, ou de tournoyer parce que rien ne s'oppose au couple.
+
+    La reaction du sol vaut exactement ce qu'il faut pour annuler la resultante
+    descendante, et elle s'applique au barycentre des appuis : le couple qui en
+    sort est celui du poids autour de ces appuis.
+    """
+    sim = Simulation(cachalot_model,
+                     SimOptions(altitude=40.0, initial_gas="vide",
+                                ground_enabled=True, ground_altitude=0.0))
+    sim.run(1200)
+
+    assert sim.state.on_ground
+    assert sim.lowest_point() == pytest.approx(0.0, abs=0.2)
+    # au repos : plus de vitesse, plus de rotation
+    assert abs(sim.state.velocity[1]) < 1e-2
+    assert max(abs(v) for v in sim.state.angular_velocity) < 0.05
+    assert abs(sim.report()["attitude"]["tangage"]) < 15.0
+    assert abs(sim.report()["attitude"]["roulis"]) < 15.0
+
+    # et il ne repart pas tout seul
+    avant = sim.lowest_point()
+    sim.run(1200)
+    assert sim.lowest_point() == pytest.approx(avant, abs=0.2)
+
+
+def test_la_reaction_du_sol_reprend_exactement_la_descente(cachalot_model):
+    """Ni plus — le vaisseau rebondirait — ni moins — il s'enfoncerait."""
+    sim = Simulation(cachalot_model,
+                     SimOptions(altitude=40.0, initial_gas="vide",
+                                ground_enabled=True, ground_altitude=0.0))
+    sim.run(1200)
+
+    contacts = [f for f in sim.state.forces if f.family == "contact"]
+    assert contacts, "un vaisseau pose doit montrer son appui"
+    reste = sum(f.vector[1] for f in sim.state.forces if f.family != "contact")
+    porte = sum(f.vector[1] for f in contacts)
+    assert porte == pytest.approx(-reste, rel=1e-9)
 
 
 def test_la_trace_est_exploitable(sim, tmp_path):

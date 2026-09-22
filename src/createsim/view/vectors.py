@@ -30,6 +30,10 @@ FORCE_COLORS = {
     "helice": (0.34, 0.92, 0.58),
     "roue": (1.00, 0.72, 0.26),
     "trainee": (0.96, 0.52, 0.86),
+    # le sol : une teinte terreuse, pour qu'on ne la confonde ni avec une
+    # portance ni avec une poussee
+    "contact": (0.80, 0.78, 0.55),
+    "frottement": (0.62, 0.68, 0.80),
 }
 RESULTANT_COLOR = (1.00, 1.00, 1.00)
 TORQUE_COLOR = (1.00, 0.86, 0.32)

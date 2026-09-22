@@ -179,14 +179,42 @@
    "grandeur": "convention_poussee",
    "observation": "les helices poussent le vaisseau vers l'avant",
    "valide": [
-    "la poussee suit l'axe du palier et le signe du regime, sans inversion"
+    "la poussee suit l'AXE du palier, jamais le sens du bloc",
+    "elle se renverse par le signe du regime ou par la molette (ScrollValue)"
    ],
    "reserve": [
-    "Reste a lever : sur cette coque les trois paliers regardent east, donc la",
-    "poussee modelisee va vers +x. Si la proue du cachalot est du cote -x, le",
-    "signe est a renverser. La question qui tranche : quand les moteurs",
-    "poussent, le vaisseau part-il VERS le bout ou sont les helices, ou dans",
-    "l'autre sens ?"
+    "Levee par la lecture du bytecode : l'orientation du bloc ne decide de rien.",
+    "`getDirectionIndependentSpeed()` multiplie le regime par",
+    "`FACING.getAxisDirection().getStep()` avant de le porter sur le vecteur",
+    "`facing` : le produit vaut toujours l'axe POSITIF. Un palier tourne vers",
+    "l'est et un tourne vers l'ouest poussent donc du meme cote."
+   ]
+  },
+  {
+   "id": "cargo-sens-de-poussee",
+   "date": "2026-09-23",
+   "observateur": "Florian",
+   "vaisseau": "cargo_airship.nbt",
+   "instrument": "observation du deplacement",
+   "grandeur": "convention_poussee",
+   "observation": "le vaisseau part a l'OPPOSE de l'helice, vers l'avant : paliers « north » a z=10 sur une coque qui va de z=3 a z=63, le cargo avance vers +z",
+   "valide": [
+    "la poussee porte sur l'axe POSITIF du palier, pas sur son vecteur facing",
+    "PropellerBearingBlockEntity.getDirectionIndependentSpeed() : step(facing) x regime x (ScrollValue == 1 ? -1 : +1)",
+    "getThrust() = voiles^1,5 x cette vitesse x 0,2 — le module etait deja bon"
+   ],
+   "reserve": [
+    "Contradiction non levee. Les deux paliers du cargo portent des",
+    "ScrollValue differents (0 en x=11, 1 en x=21), et le solveur leur donne",
+    "le MEME signe de regime : modelisees ainsi, les deux poussees",
+    "s'annulent exactement et le cargo ne devrait pas avancer.",
+    "Les deux branches sont geometriquement miroirs, mais l'algebre de",
+    "Create y compte 4 inversions de boite a droite contre 0 a gauche —",
+    "parite paire, donc meme sens. Aucun regime n'est enregistre sur ces",
+    "deux branches (le fichier a ete sauvegarde helices a l'arret), donc le",
+    "fichier ne tranche pas.",
+    "LA QUESTION QUI TRANCHE : sur le cargo en marche, les deux helices",
+    "tournent-elles dans le meme sens ou en sens opposes ?"
    ]
   }
  ]

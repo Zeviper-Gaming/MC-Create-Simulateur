@@ -52,17 +52,25 @@ def solve_speeds(kin: KineticOrgan, signals: dict[Pos, int] | None = None,
     conflicts: list[dict] = []
 
     for src in sorted(kin.sources, key=lambda s: -abs(s.rpm)):
-        source_rpm[src.pos] = src.rpm
+        # Le SENS vient du reseau, pas de la source : `Source.rpm` est un
+        # module, et c'est `source_sign` qui dit de quel cote le jeu le fait
+        # tourner (voir `KineticOrgan._build_orientation`).
+        rpm = src.rpm * kin.source_sign.get(src.pos, 1)
+        source_rpm[src.pos] = rpm
         if kin.comp_of.get(src.pos) in stopped:
             continue
         if src.pos in speeds:
             continue
-        speeds[src.pos] = src.rpm
+        speeds[src.pos] = rpm
+        came_from: dict[Pos, Pos | None] = {src.pos: None}
         queue = deque([src.pos])
         while queue:
             cur = queue.popleft()
             for nxt, ratio in kin.adj.get(cur, ()):
-                v = speeds[cur] * ratio
+                # Une boite de vitesses impose un signe qui depend de la face
+                # par ou la rotation entre : il ne tient pas dans le poids de
+                # l'arete, il se calcule ici.
+                v = speeds[cur] * ratio * kin.turn_factor(cur, came_from[cur], nxt)
                 block = kin.nodes[nxt]
                 side = kin.transmission_sides.get((cur, nxt))
                 if side is not None:
@@ -89,6 +97,7 @@ def solve_speeds(kin: KineticOrgan, signals: dict[Pos, int] | None = None,
                             "regimes": [round(speeds[nxt], 2), round(v, 2)]})
                     continue
                 speeds[nxt] = v
+                came_from[nxt] = cur
                 queue.append(nxt)
     return KineticSolution(speeds, source_rpm, conflicts)
 
@@ -103,10 +112,16 @@ def concordance(kin: KineticOrgan, speeds: dict[Pos, float],
     """
     recorded = kin.recorded
     agree = 0
+    # Le SENS est compte a part : il ne dit pas la meme chose qu'un module.
+    # Un module faux, c'est un rapport manque ; un signe faux, c'est une helice
+    # qui tire dans le mauvais sens sans que rien ne s'en apercoive.
+    signes = 0
     ecarts: list[dict] = []
     for pos, measured in sorted(recorded.items()):
         computed = speeds.get(pos)
         ok = computed is not None and abs(abs(computed) - abs(measured)) < tolerance
+        if computed is not None and computed * measured > 0:
+            signes += 1
         if ok:
             agree += 1
         elif len(ecarts) < 12:
@@ -119,5 +134,8 @@ def concordance(kin: KineticOrgan, speeds: dict[Pos, float],
         "concordance_solveur": "%d/%d" % (agree, len(recorded)) if recorded else None,
         "accord": agree,
         "total": len(recorded),
+        "concordance_sens": ("%d/%d" % (signes, len(recorded))
+                             if recorded else None),
+        "accord_sens": signes,
         "ecarts": ecarts,
     }

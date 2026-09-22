@@ -177,14 +177,6 @@ class Simulation:
         if not self.options.rotation or self.mass.total <= 0:
             st.torque = (0.0, 0.0, 0.0)
             return
-        if st.on_ground:
-            # Pose, le vaisseau ne tourne pas. Le plan de sol n'est pas un
-            # moteur de contact : il ne rend aucune force qui s'opposerait au
-            # couple, et un vaisseau qui tournoie sur le sol serait plus faux
-            # que l'immobiliser. C'est une simplification, signalee comme telle.
-            st.torque = (0.0, 0.0, 0.0)
-            st.angular_velocity = [0.0, 0.0, 0.0]
-            return
         com = self.mass.com
         # Rendu en flottants natifs : `turn()` traverse la matrice numpy
         # et renverrait des np.float64, que `json.dumps` refuse.
@@ -195,6 +187,47 @@ class Simulation:
         st.orientation, st.angular_velocity = R.step(
             st.orientation, st.angular_velocity,
             self._inertia(), st.torque, damping, DT)
+
+    def lowest_point(self, st: SimState | None = None, turn=None) -> float | None:
+        """L'altitude du point le plus bas de la coque, assiette comprise.
+
+        C'est ce que le sol porte reellement — pas le centre de masse, et pas la
+        cote 0 de la structure. Le cargo commence a y = 3 : le plancher d'avant
+        l'enterrait de trois blocs.
+        """
+        st = st or self.state
+        points = self.model.organ("coque").points
+        if not len(points):
+            return None
+        import numpy as np
+        rel = points - np.asarray(self.mass.com, dtype=float)
+        if turn is None:
+            turn = self.attitude(st)
+        if turn is not None:
+            rel = rel @ np.asarray(turn, dtype=float).T
+        return float(rel[:, 1].min() + st.position[1])
+
+    def _catch_ground(self, st: SimState, turn) -> None:
+        """Remet le point le plus bas de la coque AU RAS du plan.
+
+        La reaction du sol annule la resultante descendante, mais elle ne peut
+        pas rattraper ce qui s'est deja enfonce pendant le tick ou le vaisseau
+        arrivait. La remise a niveau s'en charge — c'est un contact
+        parfaitement mou : un vaisseau de plusieurs tonnes ne rebondit pas.
+        """
+        floor = self.ground.height_at(st.position[0], st.position[2])
+        if floor == float("-inf"):
+            return
+        low = self.lowest_point(st, turn)
+        if low is None:
+            return
+        depth = floor - low
+        if depth <= 0.0:
+            return
+        st.position[1] += depth
+        if st.velocity[1] < 0.0:
+            st.velocity[1] = 0.0
+        st.on_ground = True
 
     def _inertia(self):
         import numpy as np
@@ -272,7 +305,21 @@ class Simulation:
             self.options.ground_friction, t, bool(st.on_ground), turn))
         out.extend(F.sail_forces(self.sails, tuple(st.velocity), st.pressure, t,
                                  turn))
+        out.extend(self.ground_forces(st, turn, out))
         return out
+
+    def ground_forces(self, st: SimState, turn, others) -> list[F.Force]:
+        """Le plan de sol, quand il est allume (F2.4).
+
+        Il vient EN DERNIER : sa reaction vaut ce que les autres forces lui
+        demandent de reprendre."""
+        floor = self.ground.height_at(st.position[0], st.position[2])
+        if floor == float("-inf"):
+            return []
+        return F.ground_contact(
+            self.model.organ("coque"), st.position, st.velocity,
+            st.angular_velocity, self.mass.com, turn, floor, self.mass.total,
+            self.options.ground_friction, self.tables, others)
 
     def step(self) -> SimState:
         st = self.state
@@ -289,10 +336,8 @@ class Simulation:
         integrate(st.position, st.velocity, external, self._damping(st),
                   self.mass.total, turn)
         self._turn(st, turn)
-        floor = self.ground.height_at(st.position[0], st.position[2])
-        if floor != float("-inf"):
-            floor += self.mass.com[1]      # le sol porte le point le plus bas
-        st.on_ground = clamp_to_ground(st.position, st.velocity, floor)
+        st.on_ground = any(f.family == "contact" for f in st.forces)
+        self._catch_ground(st, self.attitude(st))
         st.pressure = self.curve.at(st.position[1])
         st.tick += 1
         return st
@@ -554,6 +599,39 @@ class Simulation:
                            "montree ici." % stabilisateurs),
                 "blocs": [list(p) for p in volants[:8]],
             })
+        # F5.13 : le SENS de rotation d'un reseau n'est pas toujours connaissable.
+        # Il ne se voit nulle part tant qu'on ne pousse pas : une helice, elle,
+        # change de cote avec lui.
+        kin = self.kin
+        helices = [b for b in self.bearings.of_type(
+            "aeronautics:propeller_bearing")]
+        aveugles = [b.pos for b in helices
+                    if kin.comp_of.get(b.pos) not in kin.oriented]
+        if aveugles:
+            out.append({
+                "code": "F5.13", "gravite": "limite du modele",
+                "titre": "sens de rotation non ancre sous une helice",
+                "detail": ("%d helice(s) sur un reseau dont aucun regime n'a ete "
+                           "enregistre : le fichier a ete sauvegarde moteur a "
+                           "l'arret. Le MODULE de la poussee est bon, son SENS "
+                           "est une convention — la molette du palier "
+                           "(ScrollValue) le renverse, et rien ici ne dit de "
+                           "quel cote le reseau tourne vraiment."
+                           % len(aveugles)),
+                "blocs": [list(p) for p in aveugles[:8]],
+            })
+        if kin.sign_conflicts:
+            total = sum(c["desaccord"] for c in kin.sign_conflicts)
+            out.append({
+                "code": "F5.14", "gravite": "grave",
+                "titre": "le releve contredit le sens calcule",
+                "detail": ("%d regime(s) enregistre(s) tournent a l'inverse de "
+                           "ce que la topologie donne : il manque une regle de "
+                           "signe quelque part sur ce reseau. Les modules "
+                           "restent justes." % total),
+                "blocs": [],
+            })
+
         if self.wheels.count:
             out.append({
                 "code": "F5.10", "gravite": "limite du modele",

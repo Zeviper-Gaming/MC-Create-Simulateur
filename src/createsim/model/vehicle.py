@@ -145,6 +145,7 @@ class VehicleModel:
         from .balloons import BalloonOrgan
         from .bearings import BearingOrgan
         from .drag import DragOrgan
+        from .hull import HullOrgan
         from .kinetics import KineticOrgan
         from .levitite import LevititeOrgan
         from .mass import MassOrgan
@@ -158,9 +159,9 @@ class VehicleModel:
                     Names.for_structure(path))
         # L'ordre est celui des dependances : les voiles d'un palier alimentent
         # le regime d'un moulin, donc les paliers passent avant la cinetique.
-        for cls_ in (MassOrgan, DragOrgan, LevititeOrgan, RedstoneOrgan,
-                     WheelOrgan, BearingOrgan, SailOrgan, KineticOrgan,
-                     StressOrgan, BalloonOrgan):
+        for cls_ in (MassOrgan, DragOrgan, HullOrgan, LevititeOrgan,
+                     RedstoneOrgan, WheelOrgan, BearingOrgan, SailOrgan,
+                     KineticOrgan, StressOrgan, BalloonOrgan):
             organ = cls_(model)
             model.organs[organ.name] = organ
             model.order.append(organ.name)
