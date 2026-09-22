@@ -306,6 +306,14 @@ class CubeView(QOpenGLWidget):
     groups_changed = QtCore.Signal()
     layer_changed = QtCore.Signal(str)
     resized = QtCore.Signal()
+    #: un CLIC gauche, sans glissement : la selection d'un bloc (F6.1). Un
+    #: glissement reste une orbite — les deux gestes partagent le meme bouton.
+    block_clicked = QtCore.Signal(float, float)
+    #: les touches d'edition, quand la vue a le focus : « supprimer », « x+ »…
+    edit_key = QtCore.Signal(str)
+
+    #: au-dela, un appui-relache est un glissement et non un clic
+    CLICK_SLOP = 4.0
 
     def __init__(self, mesh: Mesh, overlay=None, volumes=None, kinetic=None,
                  parent=None, background=(0.09, 0.10, 0.12)):
@@ -571,10 +579,15 @@ class CubeView(QOpenGLWidget):
     # -- interaction -------------------------------------------------------
     def mousePressEvent(self, event) -> None:
         self._last_pos = event.position()
+        self._press_pos = event.position()
+        self._dragged = False
 
     def mouseMoveEvent(self, event) -> None:
         if self._last_pos is None:
             return
+        press = getattr(self, "_press_pos", None)
+        if press is not None and (event.position() - press).manhattanLength() > self.CLICK_SLOP:
+            self._dragged = True
         delta = event.position() - self._last_pos
         self._last_pos = event.position()
         if event.buttons() & QtCore.Qt.MouseButton.LeftButton:
@@ -585,14 +598,29 @@ class CubeView(QOpenGLWidget):
         self.update()
 
     def mouseReleaseEvent(self, event) -> None:
+        if (event.button() == QtCore.Qt.MouseButton.LeftButton
+                and getattr(self, "_press_pos", None) is not None
+                and not getattr(self, "_dragged", True)):
+            self.block_clicked.emit(event.position().x(), event.position().y())
         self._last_pos = None
+        self._press_pos = None
 
     def wheelEvent(self, event) -> None:
         self.camera.zoom(0.9 if event.angleDelta().y() > 0 else 1.0 / 0.9)
         self.update()
 
+    EDIT_KEYS = {
+        QtCore.Qt.Key.Key_Delete: "supprimer",
+        QtCore.Qt.Key.Key_Left: "x-", QtCore.Qt.Key.Key_Right: "x+",
+        QtCore.Qt.Key.Key_Up: "z-", QtCore.Qt.Key.Key_Down: "z+",
+        QtCore.Qt.Key.Key_PageUp: "y+", QtCore.Qt.Key.Key_PageDown: "y-",
+    }
+
     def keyPressEvent(self, event) -> None:
         key = event.key()
+        if key in self.EDIT_KEYS:
+            self.edit_key.emit(self.EDIT_KEYS[key])
+            return
         views = {QtCore.Qt.Key.Key_A: "avant", QtCore.Qt.Key.Key_C: "cote",
                  QtCore.Qt.Key.Key_H: "dessus", QtCore.Qt.Key.Key_P: "arriere",
                  QtCore.Qt.Key.Key_I: "isometrique"}

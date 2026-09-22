@@ -105,7 +105,46 @@ class Simulation:
                       for p in self.balloons.pockets]
         st.pressure = self.curve.at(st.position[1])
         self.state = st
+        self._pocket_air = [frozenset(p.air) for p in self.balloons.pockets]
         self._solve(st)
+
+    def sync_pockets(self) -> str | None:
+        """Reattribue le gaz apres une edition qui a refait les poches.
+
+        `step_gas` apparie gaz et poches par position dans la liste. Une
+        edition qui coupe une poche en deux en ajoute une SANS gaz : `zip` la
+        laissait tomber, et elle disparaissait de la simulation sans un mot.
+
+        Le gaz reste ou il etait : chaque nouvelle poche herite du gaz des
+        anciennes au prorata des cases d'air qu'elle en reprend, borne a sa
+        capacite. Une poche entierement neuve part vide ; une poche disparue
+        emporte son gaz — une breche le laisse fuir. Renvoie une phrase pour
+        la barre d'etat, ou None si rien n'a change.
+        """
+        pockets = self.balloons.pockets
+        new_air = [frozenset(p.air) for p in pockets]
+        old_air = getattr(self, "_pocket_air", [])
+        if new_air == old_air:
+            return None
+        st = self.state
+        old_gas = list(st.gas)
+        gas = []
+        for pocket, air in zip(pockets, new_air):
+            inherited = 0.0
+            for index, previous in enumerate(old_air):
+                if index >= len(old_gas) or not previous:
+                    continue
+                shared = len(air & previous)
+                if shared:
+                    inherited += old_gas[index] * shared / len(previous)
+            gas.append(min(inherited, float(pocket.capacity)))
+        lost = sum(old_gas) - sum(gas)
+        st.gas = gas
+        self._pocket_air = new_air
+        message = "poches refaites : %d -> %d" % (len(old_air), len(new_air))
+        if lost >= 0.5:
+            message += ", %.0f m3 de gaz perdus" % lost
+        return message
 
     def set_command(self, lever: Pos, value: int) -> None:
         self.state.set_command(lever, value)
@@ -126,20 +165,25 @@ class Simulation:
         st.conflicts = solution.conflicts
         st.overloaded = overloaded
 
-    def _damping(self, st: SimState) -> list[float]:
+    def _damping(self, st: SimState, velocity=None) -> list[float]:
         """L'amortissement par axe : tout ce qui est lineaire en v.
 
         Isotrope pour la trainee d'enveloppe et l'amortissement universel ;
         anisotrope pour les roues (axe du support et perpendiculaire), les
         voiles (leur normale) et le levitite (vertical / horizontal).
+
+        `velocity` permet de l'evaluer a une vitesse hypothetique : le levitite
+        freine beaucoup moins vite qu'a l'arret, et une vitesse de pointe
+        calculee avec l'amortissement du repos serait fausse d'un ordre de
+        grandeur sur le cruiser.
         """
+        velocity = tuple(st.velocity) if velocity is None else tuple(velocity)
         isotropic = self.drag.coefficient(st.pressure, self.mass.total)
         wheels = F.wheel_damping(self.wheels, st.signals,
                                  self.options.ground_friction, self.tables,
                                  bool(st.on_ground))
         sails = F.sail_damping(self.sails, st.pressure, self.tables)
-        levitite = F.levitite_damping(self.levitite, tuple(st.velocity),
-                                      self.tables)
+        levitite = F.levitite_damping(self.levitite, velocity, self.tables)
         return [isotropic + a + b + c
                 for a, b, c in zip(wheels, sails, levitite)]
 

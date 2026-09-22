@@ -39,6 +39,11 @@ class BalloonFiller:
         self.s = s
         self.props = props
         self.main = main or set()
+        #: les cases inondees par les tentatives REJETEES parce qu'elles
+        #: s'echappaient de la structure. Le trou y figure : c'est par la que
+        #: la tentative est sortie. Y remettre un bloc etanche peut refermer
+        #: la poche — et c'est la seule facon de le savoir sans tout refaire.
+        self.leaks: set[Pos] = set()
 
     def _blocked(self, pos: Pos) -> bool:
         return pos in self.main or self.props.is_airtight(self.s.name(pos))
@@ -66,6 +71,7 @@ class BalloonFiller:
             while queue:
                 cur = queue.pop()               # LIFO, comme le mod
                 if not s.inside(cur):
+                    self.leaks |= added | layer
                     return False, set()
                 if (cur in graph or cur in added or cur in layer
                         or cur in existing or self._blocked(cur)):
@@ -77,6 +83,7 @@ class BalloonFiller:
                         above in graph or above in added or above in layer
                         or above in existing or self._blocked(above)):
                     if not s.inside(above):
+                        self.leaks |= added | layer | {cur}
                         return False, set()
                     stack.append(above)
 
@@ -182,14 +189,25 @@ class BalloonOrgan(Organ):
         self.pockets: list[Pocket] = []
         self.burners: list[dict] = []
         self.sensitive: frozenset[Pos] = frozenset()
+        #: la zone de fuite des poches ouvertes (voir `BalloonFiller.leaks`)
+        self.leak_zone: frozenset[Pos] = frozenset()
         self.fills = 0            # compteur de flood-fills, instrumente par les tests
 
     # -- invalidation ------------------------------------------------------
     def affected_by(self, pos: Pos) -> bool:
-        return pos in self.sensitive or self.s.name(pos) in BURNER_BLOCKS
+        # La zone de fuite AVANT tout : apres une breche, la poche retrecit et
+        # son contour ne passe plus par le trou. Remettre le mur, meme par une
+        # annulation, n'etait alors vu par personne, et la poche restait percee.
+        return (pos in self.sensitive or pos in self.leak_zone
+                or self.s.name(pos) in BURNER_BLOCKS)
 
     def apply_delta(self, edits: list[Edit]) -> bool:
         """Ne relance le remplissage que sur les poches reellement touchees."""
+        # Un bloc pose dans la zone de fuite peut refermer une poche ouverte,
+        # ou en faire naitre une qui s'echappait : on refait proprement. Le cas
+        # est rare — il faut un ballon perce — et il ne coute qu'a ce moment-la.
+        if any(e.pos in self.leak_zone for e in edits):
+            return False
         touched = [e for e in edits
                    if e.pos in self.sensitive or self.s.name(e.pos) in BURNER_BLOCKS]
         if not touched:
@@ -210,9 +228,11 @@ class BalloonOrgan(Organ):
             return False                      # autant refaire proprement
 
         keep = [p for p in self.pockets if p not in affected]
+        leaks_before = self.leak_zone
         rebuilt = self._build_pockets([b for p in affected for b in p.burners],
                                       avoid=set().union(*(p.cells for p in keep))
                                       if keep else set())
+        self.leak_zone = leaks_before | self.leak_zone
         self.pockets = keep + rebuilt
         self.pockets.sort(key=lambda p: p.centre)
         self._build_sensitive()
@@ -221,6 +241,7 @@ class BalloonOrgan(Organ):
     # -- construction ------------------------------------------------------
     def recompute(self) -> None:
         self.burners = self._collect_burners()
+        self.leak_zone = frozenset()
         self.pockets = self._build_pockets(self.burners, avoid=set())
         self.pockets.sort(key=lambda p: p.centre)
         self._build_sensitive()
@@ -242,6 +263,13 @@ class BalloonOrgan(Organ):
         if not burners:
             return []
         filler = BalloonFiller(self.s, self.props, main=avoid)
+        try:
+            return self._fill_pockets(filler, burners)
+        finally:
+            self.leak_zone = frozenset(self.leak_zone | filler.leaks)
+
+    def _fill_pockets(self, filler: "BalloonFiller",
+                      burners: list[dict]) -> list[Pocket]:
         groups: list[tuple[set[Pos], list[dict]]] = []
         for br in burners:
             cast = self.cast_position(br["pos"])

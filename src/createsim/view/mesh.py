@@ -173,12 +173,24 @@ def build_cells_mesh(cells, size, color) -> Mesh:
     return build_from_grid(grid, size, palette=np.array([color], np.float32))
 
 
-def build_from_grid(grid: np.ndarray, size, palette=None) -> Mesh:
-    """Le maillage glouton proprement dit, a partir d'une grille d'index."""
-    blocks = int((grid >= 0).sum())
-    if blocks == 0:
-        return Mesh()
+def exposure_masks(grid: np.ndarray) -> dict[tuple[int, int], np.ndarray]:
+    """Pour chaque direction, la grille des familles la ou une face est vue.
 
+    Calculees sur la grille ENTIERE, meme pour ne remailler qu'un troncon : la
+    face d'un bloc au bord d'un troncon depend de son voisin dans le troncon
+    d'a cote.
+    """
+    return {(axis, sign): np.where(_exposed(grid, axis, sign), grid, np.int8(-1))
+            for axis, sign in FACES}
+
+
+def build_region(masks, size, lo, hi, palette=None, blocks: int = 0) -> Mesh:
+    """Le maillage glouton d'une boite [lo, hi) de la grille.
+
+    C'est le coeur unique : la construction complete n'est qu'une region qui
+    couvre tout, et un troncon n'est qu'une region plus petite. Deux chemins
+    de code distincts finiraient par ne plus dessiner la meme chose.
+    """
     positions: list[np.ndarray] = []
     normals: list[np.ndarray] = []
     colors: list[np.ndarray] = []
@@ -189,21 +201,24 @@ def build_from_grid(grid: np.ndarray, size, palette=None) -> Mesh:
         palette = np.array([COLORS[name] for name in FAMILIES], dtype=np.float32)
 
     for axis, sign in FACES:
-        exposed = _exposed(grid, axis, sign)
-        raw_faces += int(exposed.sum())
+        masked = masks[(axis, sign)]
         u_axis, v_axis = [a for a in (0, 1, 2) if a != axis]
-        masked = np.where(exposed, grid, np.int8(-1))
 
         normal = [0.0, 0.0, 0.0]
         normal[axis] = float(sign)
         normal_vec = np.array(normal, dtype=np.float32)
 
-        for layer in range(size[axis]):
-            plane = np.take(masked, layer, axis=axis)
-            if not (plane >= 0).any():
+        for layer in range(lo[axis], hi[axis]):
+            plane = np.take(masked, layer, axis=axis)[
+                lo[u_axis]:hi[u_axis], lo[v_axis]:hi[v_axis]]
+            visible = plane >= 0
+            if not visible.any():
                 continue
+            raw_faces += int(visible.sum())
             offset = layer + (1.0 if sign > 0 else 0.0)
             for u, v, w, h, fam in _greedy_rectangles(plane):
+                u += lo[u_axis]
+                v += lo[v_axis]
                 quads += 1
                 corners = []
                 for cu, cv in _CORNERS:
@@ -229,7 +244,7 @@ def build_from_grid(grid: np.ndarray, size, palette=None) -> Mesh:
                 normals.append(np.tile(normal_vec, (6, 1)))
                 colors.append(np.tile(palette[fam], (6, 1)))
 
-    mesh = Mesh(
+    return Mesh(
         positions=np.concatenate(positions).ravel() if positions
         else np.empty(0, np.float32),
         normals=np.concatenate(normals).ravel() if normals
@@ -241,7 +256,33 @@ def build_from_grid(grid: np.ndarray, size, palette=None) -> Mesh:
         blocks=blocks,
         bounds=((0.0, 0.0, 0.0), tuple(float(v) for v in size)),
     )
-    return mesh
+
+
+def build_from_grid(grid: np.ndarray, size, palette=None) -> Mesh:
+    """Le maillage glouton proprement dit, a partir d'une grille d'index."""
+    blocks = int((grid >= 0).sum())
+    if blocks == 0:
+        return Mesh()
+    size = tuple(int(v) for v in size)
+    return build_region(exposure_masks(grid), size, (0, 0, 0), size,
+                        palette, blocks)
+
+
+def concat_meshes(parts, size, blocks: int = 0) -> Mesh:
+    """Recolle des maillages de troncons en un seul tampon a televerser."""
+    parts = [m for m in parts if m.vertices]
+    if not parts:
+        return Mesh(blocks=blocks,
+                    bounds=((0.0, 0.0, 0.0), tuple(float(v) for v in size)))
+    return Mesh(
+        positions=np.concatenate([m.positions for m in parts]),
+        normals=np.concatenate([m.normals for m in parts]),
+        colors=np.concatenate([m.colors for m in parts]),
+        quads=sum(m.quads for m in parts),
+        faces_before_merge=sum(m.faces_before_merge for m in parts),
+        blocks=blocks,
+        bounds=((0.0, 0.0, 0.0), tuple(float(v) for v in size)),
+    )
 
 
 # ---------------------------------------------------------------------------

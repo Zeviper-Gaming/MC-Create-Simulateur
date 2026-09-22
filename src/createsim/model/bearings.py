@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections import deque
 
-from ..data.nbt import Pos, SIX
+from ..data.nbt import AIR_NAMES, Pos, SIX
 from .vehicle import Organ
 
 BEARINGS = ("aeronautics:propeller_bearing",
@@ -145,15 +145,47 @@ class BearingOrgan(Organ):
         super().__init__(model)
         self.bearings: list[Bearing] = []
 
+    @staticmethod
+    def _touches(b: "Bearing", pos: Pos) -> bool:
+        """Une edition en `pos` peut-elle changer le rotor de ce palier ?
+
+        Le rotor est la composante CONNEXE partie du bloc de depart : un bloc
+        ne peut le rejoindre ou le quitter que s'il en fait partie ou s'il lui
+        est contigu. Le test du demi-espace avant, plus large, faisait retracer
+        les dix paliers du c1_air_cruiser pour 72 % des editions — 106 ms.
+        Les contacts avec la coque sont contigus au rotor : ils restent vus.
+        """
+        if pos == b.pos or pos == b.start or pos in b.rotor:
+            return True
+        return any((pos[0] + d[0], pos[1] + d[1], pos[2] + d[2]) in b.rotor
+                   for d in SIX)
+
     def affected_by(self, pos: Pos) -> bool:
-        for b in self.bearings:
-            if b.in_front(pos) or pos in b.rotor:
-                return True
-            for d in SIX:
-                if (pos[0] + d[0], pos[1] + d[1], pos[2] + d[2]) in b.rotor:
-                    return True
+        if any(self._touches(b, pos) for b in self.bearings):
+            return True
         # un palier pose la ou il n'y en avait pas
         return self.s.name(pos) in BEARINGS
+
+    def digest(self):
+        """Ce que lisent les dependants : le reseau cinetique prend le NOMBRE
+        de voiles d'un moulin et l'etat assemble ; l'organe des voiles ecarte
+        les voiles des rotors, et une voile qui entre ou sort d'un rotor en
+        change le compte. Le resume couvre donc les deux."""
+        return tuple((b.pos, b.sails, b.assembled) for b in self.bearings)
+
+    def apply_delta(self, edits) -> bool:
+        """Ne retrace que les paliers touches — « le rotor D'UN palier ».
+
+        Poser ou retirer un palier change la liste elle-meme : on refait tout.
+        """
+        for e in edits:
+            for entry in (e.before, e.after):
+                if entry and entry["name"] in BEARINGS:
+                    return False
+        for b in self.bearings:
+            if not b.assembled and any(self._touches(b, e.pos) for e in edits):
+                self._trace(b)
+        return True
 
     def recompute(self) -> None:
         self.bearings = []
@@ -179,6 +211,12 @@ class BearingOrgan(Organ):
         return None
 
     def _trace(self, b: Bearing) -> None:
+        """Le rotor : la composante connexe partie du bloc devant le palier.
+
+        Boucle resserree — c'est le poste le plus lourd d'une edition sur un
+        vaisseau aux rotors soudes a la coque (6 000 blocs par trace). Bornes,
+        air et demi-espace sont testes en ligne plutot que par appels.
+        """
         s = self.s
         if b.step is None:
             return
@@ -187,29 +225,44 @@ class BearingOrgan(Organ):
         if s.is_air(start):
             b.rotor, b.sails, b.contacts, b.reliable = set(), 0, [], True
             return
+        blocks = s.blocks
+        sx, sy, sz = s.size
+        ox, oy, oz = start
+        kx, ky, kz = b.step
+        bpos = b.pos
+        limit = self.LIMIT
         seen = {start}
         queue = deque([start])
         contacts: list[dict] = []
-        while queue and len(seen) < self.LIMIT:
+        while queue and len(seen) < limit:
             cur = queue.popleft()
+            cx, cy, cz = cur
             for d in SIX:
-                nb = (cur[0] + d[0], cur[1] + d[1], cur[2] + d[2])
-                if nb in seen or nb == b.pos or s.is_air(nb) or not s.inside(nb):
+                nx, ny, nz = cx + d[0], cy + d[1], cz + d[2]
+                if not (0 <= nx < sx and 0 <= ny < sy and 0 <= nz < sz):
                     continue
-                blk = s.blocks[nb]
-                if is_brittle(blk["name"], blk["props"]):
-                    if not attached_towards(blk["name"], blk["props"],
-                                            OPPOSITE_DIR[d]):
+                nb = (nx, ny, nz)
+                if nb in seen or nb == bpos:
+                    continue
+                blk = blocks.get(nb)
+                if blk is None:
+                    continue
+                name = blk["name"]
+                if name in AIR_NAMES:
+                    continue
+                props = blk["props"]
+                if is_brittle(name, props):
+                    if not attached_towards(name, props, OPPOSITE_DIR[d]):
                         continue
-                if not b.in_front(nb):
+                if (nx - ox) * kx + (ny - oy) * ky + (nz - oz) * kz < 0:
                     if len(contacts) < 8:
                         contacts.append({"depuis": list(cur), "vers": list(nb),
-                                         "bloc": blk["name"]})
+                                         "bloc": name})
                     continue
                 seen.add(nb)
                 queue.append(nb)
-        is_sail = self.props.is_sail
+        sails = self.tables.cached_set("masses.sail_blocks")
         b.rotor = seen
-        b.sails = sum(1 for p in seen if is_sail(s.name(p)))
+        b.sails = sum(1 for p in seen if blocks[p]["name"] in sails)
         b.contacts = contacts
         b.reliable = not contacts and (b.sails == 0 or len(seen) < b.sails * 3 + 10)

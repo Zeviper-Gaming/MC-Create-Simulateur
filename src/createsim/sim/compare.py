@@ -106,6 +106,13 @@ class Delta:
         return self.avant is None or self.apres is None
 
     @property
+    def sans_objet(self) -> bool:
+        """Indefinie des deux cotes : pas de vitesse de pointe sans poussee, ni
+        avant ni apres. Ce n'est pas un changement, et le compter comme tel
+        faisait echouer une comparaison ou rien n'avait bouge."""
+        return self.avant is None and self.apres is None
+
+    @property
     def ecart(self) -> float | None:
         if self.absent:
             return None
@@ -121,6 +128,8 @@ class Delta:
 
     @property
     def bouge(self) -> bool:
+        if self.sans_objet:
+            return False
         if self.absent:
             return True
         ecart = abs(self.apres - self.avant)
@@ -129,6 +138,8 @@ class Delta:
         return ecart / abs(self.avant) > self.tolerance
 
     def line(self) -> str:
+        if self.sans_objet:
+            return "%-24s sans objet des deux cotes" % self.nom
         if self.absent:
             return "%-24s ABSENT d'une des deux traces" % self.nom
         relatif = ("%+7.2f %%" % (100 * self.relatif)

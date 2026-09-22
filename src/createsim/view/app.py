@@ -24,13 +24,18 @@ from ..sim.scenario import Recorder, Scenario, default_library
 from ..sim.state import SimOptions
 from ..sim.tick import Simulation
 from ..sim.telemetry import Trace
+from ..sim.variant import (Baseline, apply_ops, export_variant,
+                           variant_diff, variant_filename)
+from .chunks import ChunkedMesh
 from .cubes import CubeView, default_format
+from .editor import DiffInset, EditorPanel
+from .picking import pick, ray_from_pixel
 from .curves import CurvePanel
 from .diagnostics import DiagnosticsPanel
 from .hud import Hud
 from .menus import fill_recent, install_menus
 from .mesh import (build_cells_mesh, build_kinetic_mesh, build_marked_mesh,
-                   build_mesh, families_from_model)
+                   families_from_model)
 from .panel import ControlPanel
 from .vectors import build_force_overlay
 
@@ -46,7 +51,8 @@ ANOMALY_COLOR = (1.00, 0.42, 0.38)
 
 TICK_MS = 50
 
-HELP = ("souris : orbite, molette : zoom, clic droit : translation   |   "
+HELP = ("clic : choisir un bloc, Suppr, fleches et PgPrec/PgSuiv : deplacer   |   "
+        "souris : orbite, molette : zoom, clic droit : translation   |   "
         "1-9 filtre une force, F toutes, B le gaz, K le regime   |   "
         "A avant, C cote, H dessus, P arriere, I iso, R recadrer")
 
@@ -69,7 +75,14 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("createsim — %s" % self.name)
         self._recent_menu = install_menus(self)
 
-        self.mesh = build_mesh(model.structure, families_from_model(model))
+        # Par troncons : une edition ne remaille que ce qu'elle a touche —
+        # 22 ms sur le cruiser au lieu de 219 (F6.4).
+        self.chunked = ChunkedMesh(model.structure, families_from_model(model))
+        self.mesh = self.chunked.mesh()
+        self.selected = None
+        self.selected_normal = None
+        self.baseline: Baseline | None = None
+        self._diff_ticks = 0
         overlay = self._overlay()
         # La geometrie des poches est calculee UNE fois : elle ne change qu'a
         # l'edition d'un bloc. La refaire a chaque tick coutait 33 ms et
@@ -94,13 +107,27 @@ class VehicleWindow(QtWidgets.QMainWindow):
         left.setStretchFactor(1, 0)
         left.setSizes([540, 190])
 
+        self.editor = EditorPanel()
+        self.editor.set_palette(sorted(model.palette))
+        self.diff_inset = DiffInset()
+
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self.panel, "Commandes")
         self.tabs.addTab(self.diagnostics, "Diagnostic")
+        self.tabs.addTab(self.editor, "Édition")
+
+        # L'encart de diff sous les onglets, toujours visible : le cahier le
+        # veut PERMANENT (F6.6), et un ecart range dans un onglet n'est pas lu.
+        right = QtWidgets.QWidget()
+        right_box = QtWidgets.QVBoxLayout(right)
+        right_box.setContentsMargins(0, 0, 0, 0)
+        right_box.setSpacing(0)
+        right_box.addWidget(self.tabs, 1)
+        right_box.addWidget(self.diff_inset)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         splitter.addWidget(left)
-        splitter.addWidget(self.tabs)
+        splitter.addWidget(right)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([900, 380])
@@ -114,11 +141,11 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.view.groups_changed.connect(self._sync_hud)
         self.view.fps_measured.connect(self._show_fps)
         self.view.layer_changed.connect(self._show_layer)
-        self.panel.commands_changed.connect(self._commands_changed)
-        self.panel.situation_changed.connect(self._refresh_scene)
-        self.panel.selection_changed.connect(self._select_lever)
-        self.panel.sim_action.connect(self._sim_action)
-        self.panel.renamed.connect(self._refresh_scene)
+        self._connect_panel(self.panel)
+        self.view.block_clicked.connect(self._block_clicked)
+        self.view.edit_key.connect(self._edit_key)
+        self.editor.gesture.connect(self._gesture)
+        self._install_edit_menu()
         self.diagnostics.anomaly_selected.connect(self._select_anomaly)
         self.curves.export_requested.connect(self._export_csv)
         self.curves.reference_requested.connect(self._load_reference)
@@ -183,6 +210,12 @@ class VehicleWindow(QtWidgets.QMainWindow):
             self.sim.step()
             self.trace.record(self.sim)
         self._refresh_scene(rebuild_kinetic=False)
+        # La reference suit l'altitude de la session ; une fois par seconde
+        # suffit, les grandeurs du diff ne bougent pas au tick.
+        self._diff_ticks += self.speed
+        if self.model.edited and self._diff_ticks >= 20:
+            self._diff_ticks = 0
+            self._refresh_diff()
 
     def _refresh_scene(self, rebuild_kinetic: bool = True) -> None:
         overlay = self._overlay()
@@ -204,6 +237,7 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.sim._solve(self.sim.state)
         self.recorder.capture()
         self._refresh_scene()
+        self._refresh_diff()
 
     def _sim_action(self, action: str) -> None:
         if action == "play":
@@ -368,6 +402,21 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.timer.stop()
         self.panel.play.setChecked(False)
         self._stop_replay()
+        if scenario.editions or self.model.edited:
+            # la variante du scenario remplace celle de la session (F6.8)
+            before = self._recompute_counts()
+            self.model.revert()
+            try:
+                apply_ops(self.model, scenario.editions)
+            except ValueError as exc:
+                self.model.revert()
+                QtWidgets.QMessageBox.warning(
+                    self, "Variante non rejouable",
+                    "Les editions de ce scenario ne s'appliquent pas a ce "
+                    "vaisseau : %s" % exc)
+                self._after_edit(before)
+                return
+            self._after_edit(before)
         self.sim.options = replace(scenario.options)
         try:
             self.trace = scenario.run(self.model.tables, sim=self.sim)
@@ -381,6 +430,289 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(
             "scenario « %s » joue : %d ticks, %d enregistrements"
             % (scenario.nom, scenario.ticks, len(self.trace)))
+
+    # -- edition de niveau 2 (L5) --------------------------------------------
+    def _connect_panel(self, panel) -> None:
+        panel.commands_changed.connect(self._commands_changed)
+        panel.situation_changed.connect(self._refresh_scene)
+        panel.selection_changed.connect(self._select_lever)
+        panel.sim_action.connect(self._sim_action)
+        panel.renamed.connect(self._refresh_scene)
+
+    def _install_edit_menu(self) -> None:
+        bar = self.menuBar()
+        menu = QtWidgets.QMenu("&Édition", self)
+        actions = bar.actions()
+        bar.insertMenu(actions[-1] if actions else None, menu)
+        for text, shortcut, name in (
+                ("&Annuler", "Ctrl+Z", "annuler"),
+                ("&Refaire", "Ctrl+Y", "refaire"),
+                ("Revenir à l'&état chargé", None, "original"),
+                (None, None, None),
+                ("&Exporter la variante en .nbt…", "Ctrl+E", "exporter")):
+            if text is None:
+                menu.addSeparator()
+                continue
+            action = menu.addAction(text)
+            if shortcut:
+                action.setShortcut(QtGui.QKeySequence(shortcut))
+            action.triggered.connect(
+                lambda _c=False, n=name: self._gesture(n, None))
+
+    def _block_clicked(self, x: float, y: float) -> None:
+        """F6.1 : le bloc sous le curseur — celui qu'on VOIT, pas celui de
+        derriere — et la face touchee, pour poser contre elle."""
+        origin, direction = ray_from_pixel(self.view.camera, x, y,
+                                           self.view.width(), self.view.height())
+        hit = pick(self.chunked.occupied, self.model.structure.size,
+                   origin, direction)
+        if hit is None:
+            self._select_block(None)
+            return
+        self._select_block(hit[0], hit[1])
+        self.tabs.setCurrentWidget(self.editor)
+
+    def _select_block(self, pos, normal=None, note: str | None = None) -> None:
+        entry = self.model.structure.blocks.get(tuple(pos)) if pos else None
+        self.selected = tuple(pos) if entry is not None else None
+        self.selected_normal = normal if entry is not None else None
+        self.editor.show_block(self.selected, entry, self.model.property_choices,
+                               self.selected_normal, note)
+        if self.selected is None:
+            self.view.set_highlight(None)
+            return
+        self.view.set_highlight(build_marked_mesh(
+            [([self.selected], SELECTED_COLOR)], self.model.structure.size))
+        self.statusBar().showMessage(
+            "%s · %d, %d, %d · %s" % ((entry["name"],) + self.selected
+                                      + (self._base,)))
+
+    def _edit_key(self, key: str) -> None:
+        if self.selected is None:
+            return
+        if key == "supprimer":
+            self._gesture("supprimer", self.selected)
+            return
+        step = {"x-": (-1, 0, 0), "x+": (1, 0, 0), "y-": (0, -1, 0),
+                "y+": (0, 1, 0), "z-": (0, 0, -1), "z+": (0, 0, 1)}[key]
+        target = tuple(self.selected[i] + step[i] for i in range(3))
+        self._gesture("deplacer", (self.selected, target))
+
+    def _recompute_counts(self) -> dict:
+        """Combien de fois chaque organe a tourne. `work` compte aussi les mises
+        a jour partielles (le delta des paliers, la masse), que `recomputes`
+        ne voit pas — et c'est bien un paliers mis a jour qui appelle F6.9."""
+        return dict(self.model.work)
+
+
+
+    def _gesture(self, kind: str, arg) -> None:
+        """Execute un geste d'edition. Un refus (« superposition refusee »)
+        s'affiche dans la barre d'etat : ce n'est pas une erreur, c'est la
+        regle F6.3 qui joue."""
+        if kind == "exporter":
+            self._export_variant()
+            return
+        before = self._recompute_counts()
+        follow = self.selected
+        counts = (len(self.model.edits), len(self.model.redone))
+        # Un geste pres d'un ballon relance son remplissage : le cahier le
+        # classe « cout eleve ». Le curseur d'attente dit que c'est du travail.
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            self._do_gesture(kind, arg, before, follow, counts)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+    def _do_gesture(self, kind, arg, before, follow, counts) -> None:
+        try:
+            if kind == "supprimer":
+                self.model.delete(arg)
+                follow = None
+            elif kind == "deplacer":
+                self.model.move(*arg)
+                follow = arg[1]
+            elif kind == "poser":
+                self.model.add(*arg)
+                follow = arg[0]
+            elif kind == "propriete":
+                pos, key, value = arg
+                if self.model.structure.blocks.get(pos, {}).get(
+                        "props", {}).get(key) == value:
+                    return
+                self.model.set_property(pos, key, value)
+            elif kind == "annuler":
+                if not self.model.undo():
+                    return
+            elif kind == "refaire":
+                if not self.model.redo():
+                    return
+            elif kind == "original":
+                if not self.model.revert():
+                    return
+            else:
+                return
+        except ValueError as exc:
+            self.statusBar().showMessage("refusé : %s" % exc)
+            return
+        self._after_edit(before, follow, self._touched(kind, counts))
+
+    def _touched(self, kind: str, counts) -> set | None:
+        """Les cases que le geste a touchees ; `None` quand on ne sait pas
+        (retour a l'original : tout peut avoir bouge)."""
+        if kind == "original":
+            return None
+        if kind == "annuler":
+            batch = self.model.redone[-1] if self.model.redone else []
+        else:
+            batch = self.model.edits[-1] if self.model.edits else []
+        return {e.pos for e in batch}
+
+    def _after_edit(self, before: dict, follow=None, touched=None) -> None:
+        """Ne refait que ce que l'edition a touche (F6.4).
+
+        Les organes recalcules le disent : un bandeau n'est reconstruit que si
+        un levier ou un bruleur a pu changer, les poches que si le ballon a
+        ete refait, et les blocs que dans les troncons touches.
+        """
+        started = time.perf_counter()
+        changed = {name for name in self.model.order
+                   if self.model.work[name] != before.get(name, 0)}
+        self.sim._solve(self.sim.state)
+        notes = []
+        pockets = self.sim.sync_pockets()
+        if pockets:
+            notes.append(pockets)
+
+        # Couleur de toutes les cases seulement si le reseau cinetique a ete
+        # refait : ses voisins ont pu en sortir. Sinon, les cases touchees.
+        positions = None if "cinetique" in changed else touched
+        self.chunked.update(self.model.structure, families_from_model(self.model),
+                            positions)
+        self.mesh = self.chunked.mesh()
+        # Le maillage teinte par regime refait TOUT le vaisseau (214 ms sur le
+        # cruiser) : seulement s'il est affiche. Sinon `_show_layer` le refera
+        # quand on basculera dessus.
+        showing = self.view.block_layer == "cinetique"
+        self.view.set_blocks(self.mesh, self._kinetic_mesh() if showing else None)
+        if "ballons" in changed:
+            self._pocket_meshes = self._build_pocket_meshes()
+            self.view.set_volumes(self._pocket_meshes)
+        # Le bandeau tient des references vers les leviers, les bruleurs et
+        # les poches de l'organe : quand l'un de ces organes est refait, elles
+        # deviennent perimees — et la molette d'un bruleur reglerait un
+        # dictionnaire que la simulation ne lit plus, sans un mot. On le
+        # reconstruit donc des que ces organes ont tourne, et seulement la :
+        # c'est rare, et un remplissage de ballon coute deja bien plus.
+        if changed & {"redstone", "ballons"}:
+            self._install_panel()
+
+        # F6.9 : le palier le plus proche de l'edition — la case suivie, ou, si
+        # le bloc a ete supprime, la case qu'il occupait.
+        near = follow if follow is not None else next(iter(touched or ()), None)
+        bearing = self._bearing_note(near) if "paliers" in changed else None
+        if bearing:
+            notes.append(bearing)
+        self._select_block(follow, self.selected_normal if follow == self.selected
+                           else None, bearing)
+        self._refresh_scene()
+        self._refresh_diff()
+        self.editor.set_history(len(self.model.edits), len(self.model.redone))
+        elapsed = (time.perf_counter() - started) * 1000.0
+        self.statusBar().showMessage(
+            "%s · %d troncon(s) remaille(s) · %.0f ms%s"
+            % (self._describe_last(), len(self.chunked.last_rebuilt), elapsed,
+               "".join(" · " + n for n in notes)))
+
+    def _describe_last(self) -> str:
+        if not self.model.ops:
+            return "état chargé"
+        op = self.model.ops[-1]
+        return {"supprimer": "bloc supprime", "deplacer": "bloc deplace",
+                "poser": "bloc pose", "propriete": "propriete changee"}.get(
+            op.get("op"), "edition")
+
+    def _bearing_note(self, near) -> str | None:
+        """F6.9 : apres une edition pres d'un palier, le drapeau de fiabilite
+        du comptage des voiles — le comptage borne au demi-espace avant peut
+        n'etre qu'un majorant."""
+        bearings = self.model.organ("paliers").bearings
+        if not bearings:
+            return None
+        if near is not None:
+            bearing = min(bearings, key=lambda b: sum(
+                abs(b.pos[i] - near[i]) for i in range(3)))
+        else:
+            bearing = bearings[0]
+        report = bearing.report()
+        if report.get("voiles") is None:
+            return ("palier %d, %d, %d : rotor assemble, voiles non comptees"
+                    % tuple(bearing.pos))
+        verdict = ("comptage fiable" if report.get("comptage_fiable")
+                   else "comptage incertain — majorant")
+        return ("palier %d, %d, %d : %d voiles, %s"
+                % (tuple(bearing.pos) + (report["voiles"], verdict)))
+
+    def _install_panel(self) -> None:
+        """Reconstruit le bandeau : une edition peut avoir retire un levier ou
+        un bruleur, et une ligne de commande orpheline ne doit pas rester."""
+        index = self.tabs.indexOf(self.panel)
+        current = self.tabs.currentIndex()
+        old = self.panel
+        self.panel = ControlPanel(self.model, self.sim)
+        self._connect_panel(self.panel)
+        self.panel.play.blockSignals(True)
+        self.panel.play.setChecked(self.timer.isActive())
+        self.panel.play.blockSignals(False)
+        self.tabs.removeTab(index)
+        self.tabs.insertTab(index, self.panel, "Commandes")
+        self.tabs.setCurrentIndex(current)
+        old.deleteLater()
+
+    def _ensure_baseline(self) -> Baseline | None:
+        """La reference intacte, construite au premier besoin seulement."""
+        if self.baseline is None and self.model.structure.path:
+            QtWidgets.QApplication.setOverrideCursor(
+                QtCore.Qt.CursorShape.WaitCursor)
+            try:
+                self.baseline = Baseline(self.model.structure.path,
+                                         self.model.tables, self.sim.options)
+            finally:
+                QtWidgets.QApplication.restoreOverrideCursor()
+        return self.baseline
+
+    def _refresh_diff(self) -> None:
+        if not self.model.edited:
+            self.diff_inset.set_deltas(None)
+            return
+        baseline = self._ensure_baseline()
+        if baseline is None:
+            return
+        self.diff_inset.set_deltas(variant_diff(self.sim, baseline),
+                                   len(self.model.edits))
+
+    def _export_variant(self) -> None:
+        """F6.7 : un fichier NOUVEAU, nomme et horodate, a cote du source."""
+        source = self.model.structure.path
+        if not source:
+            return
+        default = variant_filename(source, "variante")
+        path, _filter = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Exporter la variante", default, "Structure (*.nbt)",
+            options=QtWidgets.QFileDialog.Option.DontConfirmOverwrite)
+        if not path:
+            return
+        try:
+            written = export_variant(self.model, path)
+        except (PermissionError, FileExistsError) as exc:
+            QtWidgets.QMessageBox.warning(self, "Export refusé", str(exc))
+            return
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(self, "Export impossible", str(exc))
+            return
+        self.statusBar().showMessage(
+            "variante exportee : %s · %d edition(s) · le fichier source n'a "
+            "pas ete touche" % (Path(written).name, len(self.model.edits)))
 
     # -- rejeu --------------------------------------------------------------
     def _load_replay(self) -> None:

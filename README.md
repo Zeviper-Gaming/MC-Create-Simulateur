@@ -409,6 +409,130 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
 
+## L5 : éprouver une variante sans la construire, et la rapporter en jeu
+
+« Et si ? » — la question que l'analyse seule ne tranche pas. Le cahier prend l'exemple
+d'une hélice soudée à la coque : sans édition, le gain de vitesse reste une extrapolation ;
+avec elle, on retire les blocs de contact et on relance.
+
+Sur le cachalot v4, c'est le moulin qui mord sur la coque par une trappe en sapin, et son
+comptage de voiles est signalé non fiable. Un clic sur la trappe, `Suppr`, et le bandeau
+répond : **« palier 42, 25, 12 : 134 voiles, comptage fiable »** — en 132 ms.
+
+### Les gestes (F6.1 à F6.3)
+
+**Clic** sur un bloc dans la vue 3D : il est sélectionné et l'onglet Édition s'ouvre, avec
+son nom, sa position, la face touchée et ses propriétés éditables. Un clic sans glissement
+sélectionne ; un glissement reste une orbite. Le rayon est parcouru case par case
+(Amanatides et Woo) : le bloc choisi est celui qu'on **voit**, jamais celui de derrière.
+
+| Geste | Où | Garde-fou |
+|---|---|---|
+| supprimer | `Suppr`, bouton | — |
+| déplacer | flèches, `PgPréc` / `PgSuiv`, boutons | un bloc par case, grille entière |
+| poser | palette, contre la face cliquée | types **déjà présents** dans le fichier |
+| propriété | liste déroulante | valeurs vues dans le fichier pour ce type |
+| annuler, refaire, original | `Ctrl+Z`, `Ctrl+Y`, menu Édition | sans limite |
+
+Un bloc posé est un **clone** d'un bloc existant de ce type, NBT compris, en copie
+profonde : régler la molette du clone ne règle pas l'original. La palette est figée au
+chargement — supprimer le dernier bloc d'un type ne le retire pas de ce qu'on peut reposer.
+
+### Les trois garde-fous du cahier
+
+**Non destructif.** Le fichier source n'est jamais écrit. Un test fait **tout** — supprimer,
+poser, déplacer, annuler, refaire, revenir à l'original, exporter — puis compare l'empreinte
+SHA-256 du fichier avant et après.
+
+**Export `.nbt`**, dans un fichier nouveau, nommé et horodaté à côté du source :
+`cachalot_volant_v4--variante--20260922-143012.nbt`. Il refuse le fichier source et tout
+fichier existant. Et il est **sans perte** : 5 039 et 20 659 blocs relus identiques,
+**types compris**. Ce point n'allait pas de soi — le NBT des blocs était aplati au
+chargement, et un bloc de structure en jeu lit une valeur au mauvais type comme zéro, sans
+erreur. Le tag d'origine est désormais conservé et sert de gabarit au retypage. Tout ce que
+le simulateur ne modélise pas repart tel qu'il a été lu : la **colle** (`honey_glue`,
+`super_glue`) sans laquelle rien ne s'assemble en jeu, les entités de contraption, et même
+le `sub_level` de Sable que porte le cargo.
+
+**Diff chiffré**, dans un encart **permanent** sous les onglets : masse, portance, centre de
+masse, marge de Stress Units, vitesse de pointe, altitude d'équilibre, chacun avec son écart
+signé, en vert quand c'est un gain. La référence est une copie intacte du vaisseau évaluée
+**sous les mêmes commandes et à la même altitude** que la session — sinon pousser une manette
+ou simplement monter ferait apparaître des écarts que personne n'a créés. La vitesse de
+pointe tient compte de l'amortissement réel axe par axe, levitite compris, par point fixe.
+
+### Une variante dans un scénario (F6.8)
+
+Une édition se consigne comme on la dirait, pas comme deux états de bloc :
+
+```json
+"editions": [
+ { "op": "supprimer", "pos": "45,25,12" },
+ { "op": "deplacer", "de": "62,4,2", "vers": "62,7,2" }
+]
+```
+
+Un scénario les rejoue sur le fichier source avant le premier tick ; deux variantes du même
+vaisseau se comparent courbe contre courbe avec la machinerie de L4. Figer une session
+emporte sa variante.
+
+### Sans interruption perceptible (F6.4)
+
+Remailler tout le cruiser coûtait 219 ms ; un tick en dure 50. Le maillage est donc découpé
+en **tronçons de 16³**, et une édition ne remaille que ceux dont une case a changé, plus
+leurs voisins. Un test vérifie que le résultat est **exactement** celui d'une reconstruction
+complète — une face oubliée à une frontière laisserait un trou.
+
+| Coût d'une édition (médiane) | cargo, 5 039 blocs | cruiser, 20 659 blocs |
+|---|---|---|
+| remaillage | 7 ms | 22 ms |
+| travail complet du geste | 22 ms | 52 ms |
+
+Pour y arriver, trois organes ont appris à faire moins : les **paliers** ne retracent que
+les rotors réellement touchés, avec une règle resserrée (un bloc ne peut rejoindre un rotor
+que s'il lui est contigu — le demi-espace faisait retracer les dix paliers du cruiser pour
+72 % des éditions) ; les organes **dépendants** ne sont refaits que si ce qu'ils lisent a
+changé (le réseau cinétique ne lit que le nombre de voiles des moulins) ; et le **retour à
+l'original** se fait en une passe — 230 ms au lieu de 1,6 s pour trente éditions. Un test
+tire quarante éditions au hasard et vérifie que **chaque organe** égale celui d'un modèle
+reconstruit de zéro.
+
+Reste une exception assumée : toucher un **mur de ballon** relance son remplissage, ce que
+le cahier classe lui-même « coût élevé » — jusqu'à 0,9 s sur le cargo. Le curseur d'attente
+le dit. Le raccourcir aurait demandé d'approximer le remplissage d'Aeronautics, qui ne monte
+jamais : un ballon ouvert par le bas garde son gaz. Pas question de sacrifier la géométrie
+sur laquelle la portance est calculée.
+
+### Trois défauts de fond trouvés en route
+
+**Annuler une brèche laissait le ballon percé.** Après une brèche, la poche rétrécit et son
+contour ne passe plus par le trou ; remettre le mur n'était vu par personne. La zone où les
+tentatives de remplissage ont fui est maintenant retenue, et y poser un bloc étanche relance
+le remplissage — la règle du cahier, qui veut un flood-fill dès qu'un bloc étanche est touché.
+
+**Une poche en plus disparaissait de la simulation.** Le gaz est apparié aux poches par
+position ; une édition qui coupe une poche en deux en ajoutait une sans gaz, et `zip` la
+laissait tomber sans un mot. Le gaz est désormais réattribué au prorata des cases d'air
+reprises ; ce qui a fui par la brèche est perdu, et la barre d'état le chiffre.
+
+**Supprimer une voile ne l'invalidait pas.** L'organe ne regardait que le nom du bloc
+touché — devenu de l'air.
+
+Et deux défauts de L4 et du bandeau : une grandeur **indéfinie des deux côtés** (pas de
+vitesse de pointe sans poussée, ni avant ni après) comptait comme un changement ; et après un
+remplissage refait, la **molette d'un brûleur** réglait un dictionnaire que la simulation ne
+lisait plus. Le bandeau est reconstruit dès que l'organe des leviers ou celui du ballon a
+tourné.
+
+### Ce que l'édition ne garantit pas
+
+Une variante qui va bien à l'écran ne tient pas forcément en jeu. Le simulateur ne vérifie
+ni la colle, ni les châssis, ni les règles d'attache de Create, ni qu'un palier accepte
+d'entraîner le rotor qu'on lui greffe — l'éditeur le rappelle sous le bouton d'export. Le
+simulateur dit où chercher et de combien ; l'essai en jeu tranche.
+
+---
+
 ## Frottement : relevé au bytecode, pas à la documentation
 
 Les modèles de frottement ont été relus directement dans les jars de l'instance, désassemblés

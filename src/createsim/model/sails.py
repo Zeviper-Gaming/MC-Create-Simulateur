@@ -76,9 +76,14 @@ class SailOrgan(Organ):
     def __init__(self, model):
         super().__init__(model)
         self.sails: list[Sail] = []
+        self.positions: frozenset[Pos] = frozenset()
         self.centre = (0.0, 0.0, 0.0)
 
     def affected_by(self, pos: Pos) -> bool:
+        # La position AVANT le nom : une voile supprimee est devenue de l'air,
+        # et ne regarder que le nom laissait l'organe compter une voile fantome.
+        if pos in self.positions:
+            return True
         name = self.s.name(pos)
         return (self.props.is_sail(name)
                 or name in self.tables.get("forces.symmetric_sail_blocks"))
@@ -101,6 +106,7 @@ class SailOrgan(Organ):
             self.sails.append(Sail(pos, sail_normal(block["props"], symmetric),
                                    symmetric))
         self.sails.sort(key=lambda s: s.pos)
+        self.positions = frozenset(s.pos for s in self.sails)
 
         if self.sails:
             n = len(self.sails)

@@ -132,6 +132,10 @@ class Scenario:
     echantillon: int = 1
     question: str = ""
     notes: str = ""
+    #: la VARIANTE (F6.8) : des intentions d'edition, rejouees sur le fichier
+    #: source avant le premier tick. Deux scenarios du meme vaisseau qui ne
+    #: different que par elles se comparent courbe contre courbe.
+    editions: list = field(default_factory=list)
     #: le fichier d'ou il vient, quand il en a un. C'est lui qui nomme la
     #: trace de reference : un nom derive du titre casserait des que le titre
     #: gagne un accent ou une virgule.
@@ -156,6 +160,7 @@ class Scenario:
                 "gaz_initial": o.initial_gas,
             },
             "reglages": dict(sorted(self.reglages.items())),
+            "editions": list(self.editions),
             "commandes": [s.to_json() for s in self.commandes],
             "notes": self.notes,
         }
@@ -178,6 +183,7 @@ class Scenario:
             options=options,
             commandes=tuple(Step.from_json(c) for c in raw.get("commandes") or []),
             reglages=dict(raw.get("reglages") or {}),
+            editions=list(raw.get("editions") or []),
             echantillon=int(raw.get("echantillon", 1)),
             question=raw.get("question", ""),
             notes=raw.get("notes", ""),
@@ -227,6 +233,9 @@ class Scenario:
             raise FileNotFoundError("vaisseau introuvable : %s" % self.vaisseau)
         tables = self.tables(base)
         model = VehicleModel.load(str(path), tables)
+        if self.editions:
+            from .variant import apply_ops
+            apply_ops(model, self.editions)
         return Simulation(model, replace(self.options))
 
     def run(self, base: Tables | None = None, sim: Simulation | None = None,
@@ -263,8 +272,15 @@ class Scenario:
             Step(0, lever.pos, int(sim.state.commands.get(lever.pos,
                                                           lever.initial)))
             for lever in sim.redstone.levers)
+        kwargs.setdefault("editions", _editions_of(sim.model))
         return cls(nom=nom, vaisseau=vaisseau, ticks=ticks,
                    options=replace(sim.options), commandes=steps, **kwargs)
+
+
+def _editions_of(model) -> list:
+    """Les editions en cours de la session, au format des scenarios."""
+    from .variant import ops_to_json
+    return ops_to_json(getattr(model, "ops", []))
 
 
 class Recorder:
@@ -298,6 +314,7 @@ class Recorder:
     def scenario(self, nom: str, vaisseau: str, **kwargs) -> Scenario:
         ticks = max([s.tick for s in self.steps] + [0])
         ticks = max(ticks, self.sim.state.tick - self.start)
+        kwargs.setdefault("editions", _editions_of(self.sim.model))
         return Scenario(nom=nom, vaisseau=vaisseau, ticks=max(ticks, 1),
                         options=replace(self.sim.options),
                         commandes=tuple(self.steps), **kwargs)
