@@ -135,7 +135,8 @@ def levitite_force(organ, total_mass: float, tables) -> Force | None:
     return Force("levitite", (0.0, lift * g, 0.0), organ.centre, label)
 
 
-def propeller_forces(bearings, speeds: dict[Pos, float], tables) -> list[Force]:
+def propeller_forces(bearings, speeds: dict[Pos, float], tables,
+                     rotation=None) -> list[Force]:
     """Poussee = voiles^1,5 x RPM x 0,2, appliquee au palier, selon son axe.
 
     Le sens suit l'orientation du palier et le signe du regime. Mesure en jeu
@@ -162,9 +163,25 @@ def propeller_forces(bearings, speeds: dict[Pos, float], tables) -> list[Force]:
         if not b.reliable:
             label += " (comptage incertain)"
         out.append(Force("helice",
-                         tuple(c * magnitude * sign for c in vec),
+                         turn(tuple(c * magnitude * sign for c in vec), rotation),
                          point, label, b.pos))
     return out
+
+
+def turn(vector: Vec, rotation=None) -> Vec:
+    """Amene une direction du repere du VAISSEAU vers celui du monde.
+
+    Une helice pousse selon l'axe de son palier, une roue selon sa face, une
+    voile selon sa normale : ces directions tournent avec le vaisseau. La
+    gravite, la portance et la trainee, elles, sont deja dans le monde.
+    """
+    if rotation is None:
+        return vector
+    x, y, z = vector
+    r = rotation
+    return (r[0][0] * x + r[0][1] * y + r[0][2] * z,
+            r[1][0] * x + r[1][1] * y + r[1][2] * z,
+            r[2][0] * x + r[2][1] * y + r[2][2] * z)
 
 
 def fudge_friction(friction: float, tables) -> float:
@@ -206,7 +223,8 @@ def wheel_brake(pos: Pos, nbt: dict, signals) -> float:
 
 
 def wheel_forces(structure, props, speeds: dict[Pos, float], signals,
-                 friction: float, tables, on_ground: bool = True) -> list[Force]:
+                 friction: float, tables, on_ground: bool = True,
+                 rotation=None) -> list[Force]:
     """Traction = RPM x (1 - frein) x min(adherence, 1) x 1,75, au contact.
 
     Hors contact, la roue est toujours la mais ne pousse pas : sa force vaut
@@ -226,14 +244,17 @@ def wheel_forces(structure, props, speeds: dict[Pos, float], signals,
             vec = FACING_VEC.get(block["props"].get("facing"), (0.0, 0.0, 1.0))
             sign = math.copysign(1.0, rpm) if rpm else 1.0
             point = (pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5)
-            out.append(Force("roue", tuple(c * magnitude * sign for c in vec),
+            out.append(Force("roue",
+                             turn(tuple(c * magnitude * sign for c in vec),
+                                  rotation),
                              point, "roue a %.0f tr/min, frein %.0f%%"
                              % (abs(rpm), brake * 100), pos))
     return out
 
 
 def wheel_friction_forces(wheel_organ, velocity: Vec, signals, friction: float,
-                          tables, on_ground: bool = True) -> list[Force]:
+                          tables, on_ground: bool = True,
+                          rotation=None) -> list[Force]:
     """Freinage longitudinal et derive laterale — le frottement DYNAMIQUE.
 
     `WheelMountBlockEntity.sable$physicsTick`, offsets 555 a 669 :
@@ -267,7 +288,7 @@ def wheel_friction_forces(wheel_organ, velocity: Vec, signals, friction: float,
         vector = [0.0, 0.0, 0.0]
         vector[wheel.longitudinal_axis] = -k_long * velocity[wheel.longitudinal_axis]
         vector[wheel.lateral_axis] += -k_lat * velocity[wheel.lateral_axis]
-        out.append(Force("frottement", tuple(vector), point,
+        out.append(Force("frottement", turn(tuple(vector), rotation), point,
                          "roue : freinage k=%.0f, derive k=%.0f" % (k_long, k_lat),
                          wheel.pos))
     return out
@@ -296,7 +317,8 @@ def wheel_damping(wheel_organ, signals, friction: float, tables,
     return damping
 
 
-def sail_forces(sail_organ, velocity: Vec, pressure: float, tables) -> list[Force]:
+def sail_forces(sail_organ, velocity: Vec, pressure: float, tables,
+                rotation=None) -> list[Force]:
     """Portance des voiles de coque — le seul modele d'aile de l'ecosysteme.
 
     `BlockSubLevelLiftProvider.sable$contributeLiftAndDrag`, offsets 182-531 :
@@ -331,7 +353,8 @@ def sail_forces(sail_organ, velocity: Vec, pressure: float, tables) -> list[Forc
     for (axis, sign), magnitude in sorted(by_axis.items()):
         vector = [0.0, 0.0, 0.0]
         vector[axis] = -sign * magnitude
-        out.append(Force("portance_voile", tuple(vector), sail_organ.centre,
+        out.append(Force("portance_voile", turn(tuple(vector), rotation),
+                         sail_organ.centre,
                          "voiles de coque, axe %s" % "xyz"[axis]))
     return out
 
@@ -415,16 +438,19 @@ def resultant(forces: list[Force]) -> Vec:
 
 
 def torque_about(forces: list[Force], pivot: Vec,
-                 skip: tuple[str, ...] = ("gravite",)) -> Vec:
+                 skip: tuple[str, ...] = ("gravite",), rotation=None) -> Vec:
     """Couple net autour du centre de masse. Le poids s'y applique, donc ne
-    produit aucun moment : on l'ecarte de la somme."""
+    produit aucun moment : on l'ecarte de la somme.
+
+    Les points d'application sont dans le repere du vaisseau ; le BRAS tourne
+    donc avec lui, tandis que les vecteurs de force sont deja dans le monde.
+    """
     tx = ty = tz = 0.0
     for f in forces:
         if f.family in skip:
             continue
-        rx = f.point[0] - pivot[0]
-        ry = f.point[1] - pivot[1]
-        rz = f.point[2] - pivot[2]
+        rx, ry, rz = turn((f.point[0] - pivot[0], f.point[1] - pivot[1],
+                           f.point[2] - pivot[2]), rotation)
         fx, fy, fz = f.vector
         tx += ry * fz - rz * fy
         ty += rz * fx - rx * fz

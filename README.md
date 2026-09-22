@@ -8,14 +8,16 @@ monde, sans serveur.
 Le but n'est pas de montrer *ce que* le véhicule fait, mais **quelle force en est
 responsable**. En jeu, on voit le résultat et jamais la décomposition.
 
-> **État : lots L0 à L4 livrés.**
+> **État : lots L0 à L6 livrés.**
 > L0 est le noyau physique, sans interface, dont les deux niveaux de validation
 > automatiques passent. L1 est la fenêtre 3D : blocs, centres, et décomposition des
 > forces. L2 est le bandeau de contrôle et la boucle temps réel — le périmètre
 > demandé. L3 ajoute le diagnostic cliquable, les courbes glissantes et la
-> télémétrie. L4 apporte les scénarios, la comparaison et la non-régression.
-> Restent l'édition de blocs (L5) et le tangage complet (L6). L'outil se lance
-> maintenant **sans Python**, par un exécutable, et charge les `.nbt` directement.
+> télémétrie. L4 apporte les scénarios, la comparaison et la non-régression. L5
+> ouvre l'édition de blocs et l'export de variante. L6 fait pencher le vaisseau
+> pour de vrai — tangage et roulis par les couples — et ouvre la coque par un plan
+> de coupe. L'outil se lance **sans Python**, par un exécutable, et charge les
+> `.nbt` directement.
 
 ---
 
@@ -132,7 +134,8 @@ createsim run mon_vaisseau.nbt --ticks 6000 --gaz vide --csv trace.csv
 
 Simulation temps réel, pas de 1/20 s, avec export de la trace. `--gaz vide` part ballons
 vides pour observer la montée. `--altitude`, `--sol`, `--friction` et
-`--commande X,Y,Z=N` règlent la situation et les leviers.
+`--commande X,Y,Z=N` règlent la situation et les leviers. `--sans-rotation` fige
+l'assiette et rend les trois degrés de liberté en translation des lots précédents.
 
 ```bash
 createsim validate
@@ -162,6 +165,11 @@ visible immédiatement.
 | `K` | réseau cinétique en surbrillance, teinté par régime |
 | `A` `C` `H` `P` `I` | avant, côté, dessus, arrière, isométrique |
 | `R` | recadrer automatiquement |
+
+Sous la vue, la **barre de coupe** ouvre la coque : un axe, un curseur, et un bouton
+qui retourne le sens. Le plan est lié au vaisseau, donc il penche avec lui ; les flèches
+de force ne sont jamais coupées. Dans l'onglet **Commandes**, la section Situation permet
+de débrancher le tangage et le roulis.
 
 `--bench 5` mesure la cadence pendant cinq secondes puis sort.
 
@@ -408,6 +416,143 @@ ligne d'interface. PySide6 6.11.2 s'installe sans difficulté sur Python 3.14.
 > **La sortie de secours du cahier — une coquille Qt hébergeant Three.js — n'a pas
 > lieu d'être :** il y a 40× la marge demandée. Reste à confirmer la cadence sur les
 > trois systèmes visés ; elle n'est mesurée que sous Windows.
+
+## L6 : le vaisseau penche pour de vrai
+
+Jusqu'ici le simulateur avait trois degrés de liberté en translation et affichait le
+déséquilibre **statique** : l'écart entre centre de portance et centre de masse, et le
+couple qui en résulte à l'instant zéro. Cela répondait à « ça pique du nez ? » sans
+jamais répondre à **de combien**. Le vaisseau tourne maintenant.
+
+| Réf. | Exigence | État |
+|---|---|---|
+| F2.3 | tangage et roulis par les couples | ✅ tenseur d'inertie tiré de la géométrie |
+| F3.4 | attitude réelle appliquée au rendu | ✅ rotation autour du centre de masse |
+| F3.3 | coupe par plan mobile | ✅ barre sous la vue, plan lié au vaisseau |
+| F3.5 | textures du jeu | **écarté, avec raison** — voir plus bas |
+
+### Le tenseur d'inertie ne se règle pas, il se compte
+
+Un vaisseau ne tourne pas autour de son centre comme une bille : sa résistance à la
+rotation dépend de **où** la masse est placée. Le tenseur se déduit donc de la
+géométrie, bloc par bloc, sans aucun coefficient ajustable — chaque cube plein de côté 1
+apporte `m/6` autour de chacun de ses axes, plus le transport de Huygens jusqu'au centre
+de masse. Le cargo donne une diagonale de `[545 837, 435 337, 219 341]` : il est trois
+fois plus dur à faire rouler qu'à faire piquer, ce qui est exactement ce qu'on attend
+d'une coque longue.
+
+L'organe de masse était déjà **différentiel** ; il accumule maintenant six moments
+d'ordre deux en plus. Supprimer un bloc met le tenseur à jour sans rebalayer les 20 658
+autres, et un test compare le résultat à un recalcul complet.
+
+**L'amortissement angulaire vient de l'enveloppe.** Une case étanche à la vitesse
+`ω × d` voit une force `−k·v` ; le couple qu'elle rend a la forme d'un tenseur — le même
+produit extérieur que `applyFriction` construit côté Sable. Voiles, levitite et roues ont
+aussi un bras, mais leur contribution est marginale devant celle de l'enveloppe : c'est
+une simplification, et elle est signalée comme telle dans le code.
+
+### Pourquoi l'intégration est implicite
+
+Sur le `c1_air_cruiser`, `D·dt / I` dépasse 1. Un schéma explicite y change de signe à
+chaque pas puis part à l'infini — le vaisseau se mettrait à tournoyer au lieu de
+s'immobiliser. On résout donc `(I + D·dt) ω' = I ω + (couple − gyroscopique)·dt`, qui ne
+peut que freiner, quel que soit le pas.
+
+Le terme gyroscopique `ω × (I ω)` est celui qui fait précesser un vaisseau dont les axes
+principaux ne sont pas alignés. Il reste **explicite**, et c'est la limite assumée du
+lot : un corps dissymétrique lancé à plusieurs tours par seconde et **sans aucun**
+amortissement finirait par diverger. Le cas ne se produit pas — `universal_drag`
+s'applique à tout vaisseau, et son taux de 0,09 par seconde éteint une rotation libre
+bien avant. Un garde-fou arrête la rotation plutôt que de laisser une valeur non finie
+corrompre l'assiette.
+
+### Ce qui tourne et ce qui ne tourne pas
+
+C'est la distinction qui décide de la justesse du résultat, et elle passe par une seule
+fonction frontière, `turn()` :
+
+| Dans le repère du **vaisseau** — tourne avec lui | Dans le repère du **monde** — ne tourne pas |
+|---|---|
+| axe d'une hélice, face d'une roue, normale d'une voile | gravité, portance, traînée |
+| le **bras** de levier d'un couple | le **vecteur** de force de ce couple |
+| les axes d'amortissement (roue, voile, levitite) | — |
+
+La dernière ligne a une conséquence sur l'intégrateur : l'amortissement est diagonal dans
+le repère du vaisseau, pas dans celui du monde. Vitesse et force y sont donc ramenées, on
+intègre exactement axe par axe, et on revient. Vaisseau à plat, la matrice est l'identité
+et le chemin de code est **exactement** celui d'avant — c'est ce qui garde le niveau 2 de
+validation à son écart d'origine.
+
+### La vérification analytique
+
+À l'équilibre le couple s'annule : le vaisseau a basculé juste assez pour que le centre
+de portance revienne à l'aplomb du centre de masse. L'angle ne dépend alors **que de la
+géométrie**, ni de l'inertie ni de l'amortissement, qui ne décident que du chemin pour y
+arriver :
+
+```
+cargo_airship    bras 2,09   hauteur 12,07   ->  arctan = 9,82°
+                 simulation                       9,75°      (0,7 % d'écart)
+```
+
+Un écart plus large signalerait un couple mal formé, pas un réglage à retoucher. C'est le
+même esprit que le niveau 2 du cahier, appliqué à la rotation.
+
+### Le sol gèle la rotation
+
+Le plan de sol est une **fonction hauteur**, pas un moteur de contact : il ne peut pas
+rendre de couple de réaction. Sans précaution, un vaisseau posé dessus tourne autour de
+son centre de masse jusqu'à se retourner — c'est ce que faisait le `cachalot_volant` à
+l'arrêt. La rotation est donc gelée au contact. Simplification assumée, testée, et
+inscrite dans les limites.
+
+### La coupe ouvre la coque
+
+Un vaisseau Create est plein : vu de l'extérieur on ne voit qu'une carène, et tout ce que
+le simulateur a à dire — où sont les brûleurs, comment la poche de gaz remplit la coque,
+où passe l'arbre cinétique — est dessous. La barre sous la vue choisit un axe, fait
+glisser le plan et retourne le sens.
+
+Deux décisions de fond. Le plan vit dans le repère du **vaisseau** : quand la coque pique
+du nez, la coupe pique avec elle et on continue de regarder la même cloison. Et les
+**flèches de force ne sont jamais coupées** — une force masquée par la coupe serait une
+force qu'on croit absente.
+
+### Les traces de référence, refaites
+
+La rotation dévie les trajectoires ; la bibliothèque de non-régression l'a dit avant
+qu'on ait à le chercher :
+
+```
+cargo — montée à vide          séparation au tick 60 sur « vitesse_verticale »
+                               distance horizontale 0,000 -> 0,078 blocs
+cachalot v4 — le cran de trop  distance horizontale 50,237 -> 49,388   −1,69 %
+```
+
+Les traces ont été refaites **délibérément**, et les scénarios enregistrent désormais
+sous quelle physique ils ont été joués : une bibliothèque qui ne le dirait pas laisserait
+croire qu'un écart vient du vaisseau alors qu'il vient du simulateur.
+
+### Le coût
+
+Rien n'a bougé. Le tenseur se reconstruit à partir de six accumulateurs, l'amortissement
+angulaire de six autres : aucun parcours de blocs par tick.
+
+```
+c1_air_cruiser (20 659 blocs)    1 533 ticks/s en ligne de commande
+                                    63 tours/s dans la fenêtre
+                                  1,72 s de chargement + analyse
+```
+
+### F3.5 : les textures, et pourquoi elles n'ont pas été faites
+
+Le cahier écrit « **pourrait** », et dit lui-même pourquoi : pour un outil d'analyse, des
+volumes colorés **par rôle** se lisent mieux qu'une texture. La couleur sert ici à
+répondre à « qu'est-ce qui porte, qu'est-ce qui pousse, qu'est-ce qui pèse » — une
+texture de chêne remplacerait cette réponse par une information qu'on a déjà en jeu. Le
+travail reste possible (atlas depuis les jars, coordonnées par face lors de la fusion des
+quadrilatères), mais il se ferait **au détriment** de la lisibilité, pas à son profit.
+C'est un choix, pas un oubli ; il se rouvre si l'usage le demande.
 
 ## L5 : éprouver une variante sans la construire, et la rapporter en jeu
 
@@ -753,8 +898,9 @@ décomposition.
 | F3.10 | filtre d'affichage par famille de force | ✅ |
 | F3.11 | volume des poches en transparence, teinté par remplissage | ✅ |
 | F3.12 | surbrillance du réseau cinétique, teinté par régime | ✅ |
-| F3.4 | attitude réelle appliquée au rendu | déséquilibre **statique** seul, comme décidé |
-| F3.3 F3.5 | coupe par plan mobile, textures du jeu | L6 |
+| F3.4 | attitude réelle appliquée au rendu | ✅ L6 |
+| F3.3 | coupe par plan mobile | ✅ L6 |
+| F3.5 | textures du jeu | écarté, avec raison (L6) |
 
 Trois choix méritent d'être dits.
 
@@ -846,7 +992,9 @@ Le logiciel doit le dire plutôt que de produire un chiffre faux.
 
 | Limite | Conséquence | Atténuation |
 |---|---|---|
-| Tangage et roulis | translation seule (3 ddl) | déséquilibre **statique** affiché : centre de portance, centre de masse, bras de levier |
+| Rotation au contact du sol | un vaisseau posé ne bascule plus du tout | le sol est une fonction hauteur, pas un moteur de contact ; le vol libre tourne normalement |
+| Terme gyroscopique explicite | une rotation rapide **sans aucun** amortissement finirait par diverger | `universal_drag` s'applique toujours et l'éteint avant ; garde-fou sur les valeurs non finies |
+| Amortissement angulaire | seule l'enveloppe le rend | voiles, levitite et roues ont un bras, marginal devant l'enveloppe |
 | Flottaison sur l'eau | les bateaux ne flottent pas | masse, cinétique et propulsion restent valides |
 | Moteurs électriques | non reconnus comme sources | signalés comme réseau sans source (F5.7) |
 | Comptage des voiles | heuristique bornée au demi-espace avant du palier | drapeau de fiabilité (F6.9) |

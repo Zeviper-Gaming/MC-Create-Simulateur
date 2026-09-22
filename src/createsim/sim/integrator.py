@@ -46,7 +46,7 @@ DT = 1.0 / TICKS_PER_SECOND
 
 
 def integrate(position: list, velocity: list, external_force: tuple,
-              damping, mass: float) -> None:
+              damping, mass: float, rotation=None) -> None:
     """Un pas. Modifie `position` et `velocity` en place.
 
     `external_force` : toutes les forces lineaires en v mises a part.
@@ -61,6 +61,16 @@ def integrate(position: list, velocity: list, external_force: tuple,
         return
     if isinstance(damping, (int, float)):
         damping = (damping, damping, damping)
+    if rotation is not None:
+        # L'amortissement est diagonal dans le repere du VAISSEAU : la trainee
+        # d'enveloppe y est isotrope, mais les roues freinent selon leur axe,
+        # les voiles selon leur normale et le levitite selon la verticale du
+        # vaisseau. On y ramene vitesse et force, on integre exactement axe par
+        # axe, et on revient. Vaisseau a plat, c'est l'identite : le niveau 2
+        # reste a 0,000 %.
+        _integrate_in_body(position, velocity, external_force, damping, mass,
+                           rotation)
+        return
     for i in range(3):
         k = damping[i]
         rate = (k / mass) * DT
@@ -70,6 +80,24 @@ def integrate(position: list, velocity: list, external_force: tuple,
             terminal = external_force[i] / k
             velocity[i] = terminal + (velocity[i] - terminal) * math.exp(-rate)
     for i in range(3):
+        position[i] += velocity[i] * DT
+
+
+def _integrate_in_body(position, velocity, external_force, damping, mass,
+                       rotation) -> None:
+    body_v = [sum(rotation[j][i] * velocity[j] for j in range(3)) for i in range(3)]
+    body_f = [sum(rotation[j][i] * external_force[j] for j in range(3))
+              for i in range(3)]
+    for i in range(3):
+        k = damping[i]
+        rate = (k / mass) * DT
+        if rate < 1e-9:
+            body_v[i] += body_f[i] / mass * DT
+        else:
+            terminal = body_f[i] / k
+            body_v[i] = terminal + (body_v[i] - terminal) * math.exp(-rate)
+    for i in range(3):
+        velocity[i] = sum(rotation[i][j] * body_v[j] for j in range(3))
         position[i] += velocity[i] * DT
 
 

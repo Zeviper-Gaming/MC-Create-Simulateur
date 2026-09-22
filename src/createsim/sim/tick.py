@@ -13,7 +13,9 @@ from ..data.nbt import Pos
 from ..model.vehicle import VehicleModel
 from . import forces as F
 from .atmosphere import FlatGround, NoGround, PressureCurve
-from .integrator import TICKS_PER_SECOND, clamp_to_ground, integrate, terminal_motion
+from .integrator import (DT, TICKS_PER_SECOND, clamp_to_ground, integrate,
+                         terminal_motion)
+from . import rotation as R
 from .kinetics import concordance, solve_speeds
 from .state import SimOptions, SimState
 
@@ -165,6 +167,51 @@ class Simulation:
         st.conflicts = solution.conflicts
         st.overloaded = overloaded
 
+    def _turn(self, st: SimState, turn) -> None:
+        """Tangage et roulis, par les couples (F2.3).
+
+        Le couple est pris autour du centre de masse : le poids s'y applique et
+        n'en produit aucun. L'amortissement angulaire vient de l'enveloppe, qui
+        balaie l'air quand le vaisseau tourne.
+        """
+        if not self.options.rotation or self.mass.total <= 0:
+            st.torque = (0.0, 0.0, 0.0)
+            return
+        if st.on_ground:
+            # Pose, le vaisseau ne tourne pas. Le plan de sol n'est pas un
+            # moteur de contact : il ne rend aucune force qui s'opposerait au
+            # couple, et un vaisseau qui tournoie sur le sol serait plus faux
+            # que l'immobiliser. C'est une simplification, signalee comme telle.
+            st.torque = (0.0, 0.0, 0.0)
+            st.angular_velocity = [0.0, 0.0, 0.0]
+            return
+        com = self.mass.com
+        # Rendu en flottants natifs : `turn()` traverse la matrice numpy
+        # et renverrait des np.float64, que `json.dumps` refuse.
+        st.torque = tuple(float(v)
+                          for v in F.torque_about(st.forces, com, rotation=turn))
+        damping = R.angular_damping(self.drag, st.pressure, com)
+        damping += self._universal_angular_damping()
+        st.orientation, st.angular_velocity = R.step(
+            st.orientation, st.angular_velocity,
+            self._inertia(), st.torque, damping, DT)
+
+    def _inertia(self):
+        import numpy as np
+        return np.asarray(self.mass.inertia(), dtype=float)
+
+    def _universal_angular_damping(self):
+        """L'amortissement du moteur physique, applique aussi a la rotation.
+
+        `Rapier3D.initialize` ne recoit qu'un amortissement ; Rapier en a deux,
+        lineaire et angulaire. Lequel des deux recoit cette valeur n'a pas ete
+        lu — c'est une hypothese, signalee comme telle : sans elle, un vaisseau
+        sans enveloppe tournerait sans jamais s'arreter.
+        """
+        import numpy as np
+        rate = self.tables.get("pressure.universal_drag")
+        return rate * np.asarray(self.mass.inertia(), dtype=float)
+
     def _damping(self, st: SimState, velocity=None) -> list[float]:
         """L'amortissement par axe : tout ce qui est lineaire en v.
 
@@ -187,9 +234,24 @@ class Simulation:
         return [isotropic + a + b + c
                 for a, b, c in zip(wheels, sails, levitite)]
 
+    def attitude(self, st: SimState | None = None):
+        """La matrice de rotation du vaisseau, ou `None` s'il reste a plat.
+
+        `None` plutot que l'identite : c'est ce qui permet aux producteurs de
+        forces et a l'integrateur de garder exactement le chemin d'avant quand
+        la rotation est coupee — et au niveau 2 de rester a 0,000 %.
+        """
+        st = st or self.state
+        if not self.options.rotation:
+            return None
+        if st.orientation == R.IDENTITY:
+            return None
+        return R.matrix(st.orientation)
+
     def current_forces(self, st: SimState | None = None) -> list[F.Force]:
         st = st or self.state
         t = self.tables
+        turn = self.attitude(st)
         out: list[F.Force] = []
         out.append(F.gravity(self.mass.total, self.mass.com, t))
         out.extend(F.balloon_forces(self.balloons.pockets, st.gas, st.pressure, t))
@@ -197,17 +259,19 @@ class Simulation:
         if lev is not None:
             out.append(lev)
         out.extend(F.propeller_forces(
-            self.bearings.of_type("aeronautics:propeller_bearing"), st.speeds, t))
+            self.bearings.of_type("aeronautics:propeller_bearing"), st.speeds, t,
+            turn))
         out.extend(F.wheel_forces(self.model.structure, self.model.props,
                                   st.speeds, st.signals,
                                   self.options.ground_friction, t,
-                                  on_ground=bool(st.on_ground)))
+                                  on_ground=bool(st.on_ground), rotation=turn))
         out.append(F.drag_force(self.drag, tuple(st.velocity), st.pressure, t,
                                 self.mass.total))
         out.extend(F.wheel_friction_forces(
             self.wheels, tuple(st.velocity), st.signals,
-            self.options.ground_friction, t, bool(st.on_ground)))
-        out.extend(F.sail_forces(self.sails, tuple(st.velocity), st.pressure, t))
+            self.options.ground_friction, t, bool(st.on_ground), turn))
+        out.extend(F.sail_forces(self.sails, tuple(st.velocity), st.pressure, t,
+                                 turn))
         return out
 
     def step(self) -> SimState:
@@ -221,8 +285,10 @@ class Simulation:
         # le cas de la trainee, et du frottement des roues depuis qu'il existe.
         external = F.resultant([f for f in st.forces
                                 if f.family not in IMPLICIT_FAMILIES])
+        turn = self.attitude(st)
         integrate(st.position, st.velocity, external, self._damping(st),
-                  self.mass.total)
+                  self.mass.total, turn)
+        self._turn(st, turn)
         floor = self.ground.height_at(st.position[0], st.position[2])
         if floor != float("-inf"):
             floor += self.mass.com[1]      # le sol porte le point le plus bas
@@ -322,6 +388,17 @@ class Simulation:
         rep["roues"] = [f.report() for f in F.wheel_forces(
             structure, self.model.props, speeds_for_report, st.signals,
             self.options.ground_friction, t)]
+        pitch, roll, yaw = R.euler(st.orientation)
+        rep["attitude"] = {
+            "active": self.options.rotation,
+            "tangage": round(pitch, 2),
+            "roulis": round(roll, 2),
+            "lacet": round(yaw, 2),
+            "vitesse_angulaire": [round(float(v), 5) for v in st.angular_velocity],
+            "couple_applique": [round(float(v), 1) for v in st.torque],
+            "inertie_diagonale": [round(self.mass.inertia()[i][i], 1)
+                                  for i in range(3)],
+        }
         rep["voiles"] = self.sails.report()
         rep["suspensions"] = self.wheels.report()
         rep["trainee"] = self.drag.report(st.pressure, self.mass.total)
@@ -460,6 +537,22 @@ class Simulation:
                            "VOILE. Le SU affiche pour ce reseau est un "
                            "PLANCHER, pas une estimation."),
                 "blocs": [list(pos)],
+            })
+        blocks = self.model.structure
+        stabilisateurs = (len(blocks.positions_of("create:flywheel"))
+                          + len(blocks.positions_of(
+                              "aeronautics:gyroscopic_propeller_bearing")))
+        if stabilisateurs and self.options.rotation:
+            volants = sorted(blocks.positions_of("create:flywheel"))
+            out.append({
+                "code": "F5.12", "gravite": "limite du modele",
+                "titre": "stabilisateurs d'attitude non modelises",
+                "detail": ("%d bloc(s) que Sable utilise pour tenir l'assiette "
+                           "— volants d'inertie en roues de reaction "
+                           "(ReactionWheelManager) et paliers gyroscopiques. "
+                           "L'attitude reelle sera PLUS STABLE que celle "
+                           "montree ici." % stabilisateurs),
+                "blocs": [list(p) for p in volants[:8]],
             })
         if self.wheels.count:
             out.append({

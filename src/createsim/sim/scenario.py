@@ -158,6 +158,11 @@ class Scenario:
                 "sol_altitude": o.ground_altitude,
                 "sol_friction": o.ground_friction,
                 "gaz_initial": o.initial_gas,
+                # Sous quelle physique la trace a ete enregistree. Une
+                # bibliotheque de non-regression qui ne le dirait pas laisserait
+                # croire qu'un ecart vient du vaisseau alors qu'il vient du
+                # simulateur.
+                "rotation": o.rotation,
             },
             "reglages": dict(sorted(self.reglages.items())),
             "editions": list(self.editions),
@@ -175,6 +180,7 @@ class Scenario:
             ground_altitude=float(s.get("sol_altitude", 0.0)),
             ground_friction=float(s.get("sol_friction", 1.0)),
             initial_gas=str(s.get("gaz_initial", "nbt")),
+            rotation=bool(s.get("rotation", True)),
         )
         return cls(
             nom=raw["nom"],

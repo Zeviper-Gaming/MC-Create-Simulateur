@@ -447,6 +447,14 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.friction.valueChanged.connect(self._ground_changed)
         section.add_row("friction du sol", self.friction)
 
+        # F2.3 : l'assiette se debranche. Sans elle le vaisseau garde ses trois
+        # degres de liberte en translation — c'est le comportement des lots
+        # precedents, et c'est ce qui permet de voir ce que la rotation change.
+        self.rotation = QtWidgets.QCheckBox("tangage et roulis")
+        self.rotation.setChecked(options.rotation)
+        self.rotation.toggled.connect(self._rotation_changed)
+        section.add(self.rotation)
+
         # F4.7 : les constantes restent modifiables, en signalant l'ecart
         self.expert = QtWidgets.QCheckBox("mode expert (constantes du jeu)")
         self.expert.toggled.connect(self._expert_changed)
@@ -520,6 +528,18 @@ class ControlPanel(QtWidgets.QScrollArea):
         options.ground_altitude = self.ground_y.value()
         options.ground_friction = self.friction.value()
         self.sim.rebuild_ground()
+        self.situation_changed.emit()
+
+    def _rotation_changed(self, on: bool) -> None:
+        """Rebrancher l'assiette ne suffit pas : il faut aussi remettre le
+        vaisseau a plat. Le laisser penche avec une rotation coupee figerait
+        une assiette que plus rien ne fait evoluer."""
+        from ..sim import rotation as R
+        self.sim.options.rotation = on
+        if not on:
+            self.sim.state.orientation = R.IDENTITY
+            self.sim.state.angular_velocity = [0.0, 0.0, 0.0]
+            self.sim.state.torque = (0.0, 0.0, 0.0)
         self.situation_changed.emit()
 
     def _expert_changed(self, on: bool) -> None:

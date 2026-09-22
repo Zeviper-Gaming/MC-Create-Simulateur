@@ -31,6 +31,7 @@ from .cubes import CubeView, default_format
 from .editor import DiffInset, EditorPanel
 from .picking import pick, ray_from_pixel
 from .curves import CurvePanel
+from .cut import CutBar
 from .diagnostics import DiagnosticsPanel
 from .hud import Hud
 from .menus import fill_recent, install_menus
@@ -54,7 +55,8 @@ TICK_MS = 50
 HELP = ("clic : choisir un bloc, Suppr, fleches et PgPrec/PgSuiv : deplacer   |   "
         "souris : orbite, molette : zoom, clic droit : translation   |   "
         "1-9 filtre une force, F toutes, B le gaz, K le regime   |   "
-        "A avant, C cote, H dessus, P arriere, I iso, R recadrer")
+        "A avant, C cote, H dessus, P arriere, I iso, R recadrer   |   "
+        "barre du bas : ouvrir la coque par un plan de coupe")
 
 
 class VehicleWindow(QtWidgets.QMainWindow):
@@ -100,8 +102,21 @@ class VehicleWindow(QtWidgets.QMainWindow):
         self.curves.set_trace(self.trace)
         self.replay: Trace | None = None
 
+        # La coupe est collee sous la vue, et elle vit DANS LA FENETRE :
+        # le bandeau de commandes est reconstruit a chaque edition qui touche
+        # un levier, et une coupe qui se refermerait toute seule serait un
+        # defaut.
+        self.cut_bar = CutBar(model.structure.size)
+        self.cut_bar.changed.connect(self._cut_changed)
+        scene = QtWidgets.QWidget()
+        scene_box = QtWidgets.QVBoxLayout(scene)
+        scene_box.setContentsMargins(0, 0, 0, 0)
+        scene_box.setSpacing(0)
+        scene_box.addWidget(self.view, 1)
+        scene_box.addWidget(self.cut_bar)
+
         left = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
-        left.addWidget(self.view)
+        left.addWidget(scene)
         left.addWidget(self.curves)
         left.setStretchFactor(0, 1)
         left.setStretchFactor(1, 0)
@@ -171,13 +186,33 @@ class VehicleWindow(QtWidgets.QMainWindow):
 
     # -- construction des couches ------------------------------------------
     def _overlay(self):
-        forces = self.sim.current_forces()
+        forces = self._placed_forces()
         return build_force_overlay(
             forces, com=self.sim.mass.com,
             span=max(self.model.structure.size),
             lift_centre=lift_centre(forces),
             torque=torque_about(forces, self.sim.mass.com),
             resultant=resultant(forces))
+
+    def _placed_forces(self):
+        """Les forces, avec leurs points d'application places dans le monde.
+
+        Les VECTEURS restent tels quels : la gravite tire vers le bas quelle
+        que soit l'assiette. Seuls les POINTS suivent le vaisseau — sinon une
+        fleche d'helice resterait accrochee a l'ancienne place du palier.
+        """
+        forces = self.sim.current_forces()
+        turn = self.sim.attitude()
+        if turn is None:
+            return forces
+        com = self.sim.mass.com
+        placed = []
+        for f in forces:
+            arm = tuple(f.point[i] - com[i] for i in range(3))
+            moved = tuple(com[i] + sum(turn[i][j] * arm[j] for j in range(3))
+                          for i in range(3))
+            placed.append(replace(f, point=moved))
+        return placed
 
     def _build_pocket_meshes(self):
         return [(build_cells_mesh(pocket.air, self.model.structure.size,
@@ -218,6 +253,8 @@ class VehicleWindow(QtWidgets.QMainWindow):
             self._refresh_diff()
 
     def _refresh_scene(self, rebuild_kinetic: bool = True) -> None:
+        # F3.4 : l'attitude reelle du vehicule, appliquee au rendu.
+        self.view.set_attitude(self.sim.state.orientation, self.sim.mass.com)
         overlay = self._overlay()
         self.overlay_data = overlay
         self.view.set_overlay(overlay)
@@ -779,6 +816,11 @@ class VehicleWindow(QtWidgets.QMainWindow):
     def _sync_hud(self) -> None:
         self.hud.visible_groups = set(self.view.visible_groups)
         self.hud.update()
+
+    # -- coupe par plan mobile (F3.3) ---------------------------------------
+    def _cut_changed(self, axis, offset: float, reverse: bool = False) -> None:
+        """Repercute la barre de coupe sur la vue."""
+        self.view.set_cut(axis, offset, reverse)
 
     def _show_layer(self, layer: str) -> None:
         self.hud.mode = ("reseau cinetique, teinte par regime"

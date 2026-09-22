@@ -28,6 +28,7 @@ def _load(path: str, args) -> Simulation:
         ground_enabled=getattr(args, "sol", None) is not None,
         ground_friction=getattr(args, "friction", 1.0),
         initial_gas=getattr(args, "gaz", "nbt"),
+        rotation=not getattr(args, "sans_rotation", False),
     )
     sim = Simulation(model, options)
     for spec in getattr(args, "commande", None) or []:
@@ -79,6 +80,10 @@ def cmd_run(args) -> int:
           % (last.get("gaz_total", 0.0), last.get("gaz_capacite", 0)))
     print("pression   : %8.4f" % last.get("pression", 0.0))
     print("regime max : %8.2f tr/min" % last.get("regime_max", 0.0))
+    attitude = sim.report().get("attitude") or {}
+    if attitude.get("active"):
+        print("assiette   : %8.2f deg de tangage, %.2f de roulis"
+              % (attitude["tangage"], attitude["roulis"]))
     if args.json:
         _emit(sim.report(), args.json)
     return 0
@@ -277,6 +282,9 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--sol", type=float, default=None)
     a.add_argument("--commande", action="append",
                    metavar="X,Y,Z=N", help="forcer un levier")
+    a.add_argument("--sans-rotation", action="store_true",
+                   help="figer l'assiette : 3 degres de liberte en "
+                        "translation, comme avant le lot L6")
     a.set_defaults(func=cmd_analyse)
 
     r = sub.add_parser("run", help="simuler N ticks et tracer")
@@ -291,6 +299,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--echantillon", type=int, default=1,
                    help="n'enregistrer qu'un tick sur N")
     r.add_argument("--commande", action="append", metavar="X,Y,Z=N")
+    r.add_argument("--sans-rotation", action="store_true",
+                   help="figer l'assiette : 3 degres de liberte en "
+                        "translation, comme avant le lot L6")
     r.set_defaults(func=cmd_run)
 
     v = sub.add_parser("validate", help="niveaux 1 et 2 de validation")
@@ -303,6 +314,9 @@ def build_parser() -> argparse.ArgumentParser:
                    metavar="SECONDES", help="mesurer la cadence puis sortir")
     w.add_argument("--largeur", type=int, default=1280)
     w.add_argument("--hauteur", type=int, default=720)
+    w.add_argument("--sans-rotation", action="store_true",
+                   help="figer l'assiette : 3 degres de liberte en "
+                        "translation, comme avant le lot L6")
     w.set_defaults(func=cmd_voir)
 
     s = sub.add_parser("scenario", help="bibliotheque de scenarios (L4)")

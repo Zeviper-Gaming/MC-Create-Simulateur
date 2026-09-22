@@ -20,6 +20,10 @@ class DragOrgan(Organ):
         super().__init__(model)
         self.cells: set[Pos] = set()
         self.centre = (0.0, 0.0, 0.0)
+        #: sommes de r_i.r_j sur les cases etanches, a l'origine. Un vaisseau
+        #: qui tourne voit chacune d'elles balayer l'air : le couple resistant
+        #: a la meme forme qu'un tenseur d'inertie, pondere par la trainee.
+        self.products = [0.0] * 6
 
     def affected_by(self, pos: Pos) -> bool:
         return pos in self.cells or self.props.is_airtight(self.s.name(pos))
@@ -30,6 +34,16 @@ class DragOrgan(Organ):
             if self.props.is_airtight(name):
                 cells |= self.s.by_name[name]
         self.cells = cells
+        products = [0.0] * 6
+        for pos in cells:
+            x, y, z = pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5
+            products[0] += x * x
+            products[1] += y * y
+            products[2] += z * z
+            products[3] += x * y
+            products[4] += x * z
+            products[5] += y * z
+        self.products = products
         if cells:
             n = len(cells)
             self.centre = tuple(

@@ -15,7 +15,8 @@
   "sol_actif": true,
   "sol_altitude": 0.0,
   "sol_friction": 1.0,
-  "gaz_initial": "nbt"
+  "gaz_initial": "nbt",
+  "rotation": true
  },
  "reglages": {},
  "commandes": [
@@ -65,5 +66,5 @@
    "valeur": 0
   }
  ],
- "notes": "Eprouve la chaine cinetique complete : voiles du moulin, escalier des transmissions, bilan SU. Les trois paliers d'helice de ce fichier ont un rotor ASSEMBLE : leur impact est un plancher, et le scenario existe aussi pour que cette limite reste visible."
+ "notes": "Eprouve la chaine cinetique complete : voiles du moulin, escalier des transmissions, bilan SU. Les trois paliers d'helice de ce fichier ont un rotor ASSEMBLE : leur impact est un plancher, et le scenario existe aussi pour que cette limite reste visible. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
 }

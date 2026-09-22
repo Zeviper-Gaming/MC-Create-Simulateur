@@ -15,7 +15,8 @@
   "sol_actif": true,
   "sol_altitude": 10.0,
   "sol_friction": 1.0,
-  "gaz_initial": "vide"
+  "gaz_initial": "vide",
+  "rotation": true
  },
  "reglages": {},
  "commandes": [
@@ -25,5 +26,5 @@
    "valeur": 9
   }
  ],
- "notes": "Eprouve le plan de sol : a vide le vaisseau descend, se pose sans traverser, puis repart."
+ "notes": "Eprouve le plan de sol : a vide le vaisseau descend, se pose sans traverser, puis repart. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
 }

@@ -27,13 +27,17 @@ class SimOptions:
     ground_enabled: bool = False
     ground_friction: float = 1.0
     initial_gas: str = "nbt"        # "nbt" (regime enregistre) ou "vide"
+    #: tangage et roulis par les couples (F2.3). Coupe, le vaisseau reste a
+    #: plat et ne garde que ses trois degres de liberte en translation.
+    rotation: bool = True
 
     def report(self) -> dict:
         return {"altitude": self.altitude, "vitesse_initiale": list(self.velocity),
                 "sol": {"actif": self.ground_enabled,
                         "altitude": self.ground_altitude,
                         "friction": self.ground_friction},
-                "gaz_initial": self.initial_gas}
+                "gaz_initial": self.initial_gas,
+                "rotation": self.rotation}
 
 
 @dataclass
@@ -48,6 +52,11 @@ class SimState:
     on_ground: bool = False
 
     # derniers resultats du tick, pour lecture par la presentation
+    #: attitude (quaternion w, x, y, z) et vitesse angulaire, monde (L6)
+    orientation: tuple = (1.0, 0.0, 0.0, 0.0)
+    angular_velocity: list = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    torque: tuple = (0.0, 0.0, 0.0)
+
     speeds: dict = field(default_factory=dict)
     source_rpm: dict = field(default_factory=dict)
     signals: dict = field(default_factory=dict)

@@ -15,7 +15,8 @@
   "sol_actif": true,
   "sol_altitude": 0.0,
   "sol_friction": 1.0,
-  "gaz_initial": "vide"
+  "gaz_initial": "vide",
+  "rotation": true
  },
  "reglages": {},
  "commandes": [
@@ -30,5 +31,5 @@
    "valeur": 0
   }
  ],
- "notes": "Le scenario qui justifie des commandes HORODATEES : le meme jeu de reglages sans la date ne decrit pas cette manoeuvre. Le sol est actif pour que la chute se termine quelque part."
+ "notes": "Le scenario qui justifie des commandes HORODATEES : le meme jeu de reglages sans la date ne decrit pas cette manoeuvre. Le sol est actif pour que la chute se termine quelque part. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
 }

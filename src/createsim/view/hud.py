@@ -84,6 +84,14 @@ class Hud(QtWidgets.QWidget):
             ("bras lateral", number(tangage.get("bras_lateral"), 2)
              if tangage else "—", False),
         ]
+        # L'assiette REELLE, quand elle est simulee (F3.4) : le bras de levier
+        # dit le desequilibre statique, le tangage dit ou le vaisseau en est.
+        attitude = report.get("attitude") or {}
+        if attitude.get("active"):
+            self.instruments.append(
+                ("tangage", number(attitude.get("tangage"), 1, "deg"), False))
+            self.instruments.append(
+                ("roulis", number(attitude.get("roulis"), 1, "deg"), False))
         self.legend = list(overlay.legend)
         self.visible_groups = set(overlay.ranges)
         if overlay.scale > 0:

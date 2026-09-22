@@ -15,7 +15,8 @@
   "sol_actif": false,
   "sol_altitude": 0.0,
   "sol_friction": 1.0,
-  "gaz_initial": "vide"
+  "gaz_initial": "vide",
+  "rotation": true
  },
  "reglages": {},
  "commandes": [
@@ -25,5 +26,5 @@
    "valeur": 9
   }
  ],
- "notes": "Le scenario de base. Il eprouve la dynamique du gaz, la trainee et la convergence vers l'altitude d'equilibre — les trois choses qu'une mise a jour de constantes deplace en premier."
+ "notes": "Le scenario de base. Il eprouve la dynamique du gaz, la trainee et la convergence vers l'altitude d'equilibre — les trois choses qu'une mise a jour de constantes deplace en premier. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
 }

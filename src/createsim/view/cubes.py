@@ -45,6 +45,12 @@ in vec3 v_color;
 in vec3 v_world;
 out vec4 frag_color;
 
+// Coupe par plan mobile (F3.3), dans le repere du VAISSEAU : c'est la coque
+// qu'on ouvre, et elle doit rester ouverte au meme endroit quand le vaisseau
+// pique du nez. Passee en vec4 (normale, distance) : `setUniformValue` n'a pas
+// de surcharge flottante fiable en PySide6, une vec4 en a une.
+uniform vec4 cut;
+
 // Eclairage directionnel fixe, et rien de plus : ni ombres portees, ni
 // occlusion ambiante, ni post-traitement. Les constantes sont figees ici
 // plutot que passees en uniforme — PySide6 n'expose `setUniformValue` que par
@@ -60,6 +66,7 @@ const float AMBIENT = 0.55;
 const float EDGE = 0.34;
 
 void main() {
+    if (dot(v_world, cut.xyz) > cut.w) discard;
     float lambert = max(dot(normalize(v_normal), LIGHT), 0.0);
     float shade = AMBIENT + (1.0 - AMBIENT) * lambert;
 
@@ -85,10 +92,12 @@ in vec3 v_normal;
 in vec3 v_color;
 in vec3 v_world;
 out vec4 frag_color;
+uniform vec4 cut;
 const vec3  LIGHT   = normalize(vec3(0.42, 0.80, 0.43));
 const float AMBIENT = 0.62;
 const float ALPHA   = %.2f;
 void main() {
+    if (dot(v_world, cut.xyz) > cut.w) discard;
     float lambert = max(dot(normalize(v_normal), LIGHT), 0.0);
     frag_color = vec4(v_color * (AMBIENT + (1.0 - AMBIENT) * lambert), ALPHA);
 }
@@ -340,6 +349,12 @@ class CubeView(QOpenGLWidget):
         self.uniforms: dict[str, dict[str, int]] = {}
         self.batches: dict[str, _Batch] = {}
         self._last_pos = None
+        #: l'attitude du vaisseau, appliquee aux geometries qui lui sont liees
+        #: (blocs, gaz, surbrillance). Les fleches de force, elles, sont deja
+        #: dans le repere du monde : les tourner ferait pencher la gravite.
+        self.model = QtGui.QMatrix4x4()
+        #: (normale, distance) du plan de coupe ; rien de coupe par defaut
+        self.cut = QtGui.QVector4D(0.0, 0.0, 0.0, 1.0e9)
         self._frames = 0
         self._t0 = time.perf_counter()
         self.fps = 0.0
@@ -393,7 +408,8 @@ class CubeView(QOpenGLWidget):
         # PySide6 n'expose `setUniformValue` que par emplacement entier : on
         # resout les noms une fois pour toutes, apres l'edition de liens.
         program.bind()
-        self.uniforms[name] = {"mvp": program.uniformLocation("mvp")}
+        self.uniforms[name] = {"mvp": program.uniformLocation("mvp"),
+                               "cut": program.uniformLocation("cut")}
         program.release()
         self.programs[name] = program
 
@@ -413,12 +429,14 @@ class CubeView(QOpenGLWidget):
         if not self.programs:
             return
         matrix = self.camera.matrix(self.width() / max(1, self.height()))
+        # Le vaisseau porte son attitude ; la surimpression reste dans le monde.
+        ship = matrix * self.model
 
         # 1. les blocs, opaques
         gl.glEnable(GL_DEPTH_TEST)
         gl.glEnable(GL_CULL_FACE)
         gl.glDisable(GL_BLEND)
-        self._draw(self.block_layer, "blocs", gl, matrix)
+        self._draw(self.block_layer, "blocs", gl, ship)
 
         # 2. les volumes de gaz, transparents : on les lit a travers, donc ni
         #    ecriture de profondeur ni elimination des faces arriere.
@@ -431,7 +449,7 @@ class CubeView(QOpenGLWidget):
             gl.glDisable(GL_DEPTH_TEST)
             gl.glDepthMask(False)
             for index in range(len(self.volumes)):
-                self._draw("volume%d" % index, "volume", gl, matrix)
+                self._draw("volume%d" % index, "volume", gl, ship)
             gl.glEnable(GL_DEPTH_TEST)
             gl.glDepthMask(True)
 
@@ -454,7 +472,7 @@ class CubeView(QOpenGLWidget):
             gl.glEnable(GL_BLEND)
             gl.glDisable(GL_DEPTH_TEST)
             gl.glDepthMask(False)
-            self._draw("surbrillance", "fantome", gl, matrix)
+            self._draw("surbrillance", "fantome", gl, ship)
             gl.glEnable(GL_DEPTH_TEST)
             gl.glDepthMask(True)
             gl.glDisable(GL_BLEND)
@@ -467,6 +485,7 @@ class CubeView(QOpenGLWidget):
         program = self.programs[program_name]
         program.bind()
         program.setUniformValue(self.uniforms[program_name]["mvp"], matrix)
+        program.setUniformValue(self.uniforms[program_name]["cut"], self.cut)
         batch.draw(gl)
         program.release()
 
@@ -476,12 +495,49 @@ class CubeView(QOpenGLWidget):
         program = self.programs[program_name]
         program.bind()
         program.setUniformValue(self.uniforms[program_name]["mvp"], matrix)
+        # Les fleches ne sont jamais coupees : une force cachee par la coupe
+        # serait une force qu'on croit absente.
+        program.setUniformValue(self.uniforms[program_name]["cut"],
+                                QtGui.QVector4D(0.0, 0.0, 0.0, 1.0e9))
         for group, (first, count) in self.overlay.ranges.items():
             if group in self.visible_groups:
                 batch.draw(gl, first, count)
         program.release()
 
     # -- mise a jour en temps reel -----------------------------------------
+    def set_attitude(self, quaternion, centre) -> None:
+        """Applique l'attitude du vaisseau au rendu (F3.4).
+
+        La rotation se fait AUTOUR DU CENTRE DE MASSE : c'est lui qui suit la
+        trajectoire, le reste tourne autour. Tourner autour de l'origine de la
+        structure ferait deriver le vaisseau hors du cadre a chaque degre.
+        """
+        w, x, y, z = quaternion
+        model = QtGui.QMatrix4x4()
+        model.translate(float(centre[0]), float(centre[1]), float(centre[2]))
+        model.rotate(QtGui.QQuaternion(float(w), float(x), float(y), float(z)))
+        model.translate(-float(centre[0]), -float(centre[1]), -float(centre[2]))
+        self.model = model
+        self.update()
+
+    def set_cut(self, axis: int | None, offset: float = 0.0,
+                reverse: bool = False) -> None:
+        """Le plan de coupe (F3.3) : `axis` en 0/1/2, ou `None` pour ouvrir.
+
+        `reverse` retourne la normale, donc garde l'autre moitie. Le fragment
+        est jete quand `dot(position, normale) > distance` : normale +1 coupe
+        au-dessus du plan, normale -1 coupe au-dessous.
+        """
+        if axis is None:
+            self.cut = QtGui.QVector4D(0.0, 0.0, 0.0, 1.0e9)
+        else:
+            sign = -1.0 if reverse else 1.0
+            normal = [0.0, 0.0, 0.0]
+            normal[axis] = sign
+            self.cut = QtGui.QVector4D(normal[0], normal[1], normal[2],
+                                       sign * float(offset))
+        self.update()
+
     def set_overlay(self, overlay) -> None:
         """Remplace les vecteurs de force sans reconstruire la scene."""
         self.overlay = overlay

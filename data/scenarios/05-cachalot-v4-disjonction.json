@@ -15,7 +15,8 @@
   "sol_actif": true,
   "sol_altitude": 0.0,
   "sol_friction": 1.0,
-  "gaz_initial": "nbt"
+  "gaz_initial": "nbt",
+  "rotation": true
  },
  "reglages": {},
  "commandes": [
@@ -65,5 +66,5 @@
    "valeur": 8
   }
  ],
- "notes": "9 puis 8 : 7680 su sur 8192, puis 8960 et le reseau disjoncte. Ce vaisseau n'est pas dans le depot ; le scenario est ignore quand il est absent, comme le c1_air_cruiser des tests."
+ "notes": "9 puis 8 : 7680 su sur 8192, puis 8960 et le reseau disjoncte. Ce vaisseau n'est pas dans le depot ; le scenario est ignore quand il est absent, comme le c1_air_cruiser des tests. Traces de reference refaites au lot L6 : le tangage et le roulis sont desormais simules, ce qui devie legerement les trajectoires."
 }
