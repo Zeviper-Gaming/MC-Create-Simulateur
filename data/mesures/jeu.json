@@ -180,41 +180,44 @@
    "observation": "les helices poussent le vaisseau vers l'avant",
    "valide": [
     "la poussee suit l'AXE du palier, jamais le sens du bloc",
-    "elle se renverse par le signe du regime ou par la molette (ScrollValue)"
+    "elle se renverse par le signe du regime ou par la molette (ScrollValue)",
+    "loi exacte (getScaledThrust, Sable) : a regime positif et molette a droite, l'axe NEGATIF — les trois paliers « east » poussent vers -x, a l'oppose de l'arriere ou ils sont montes (x = 62 a 66) : le cachalot avance"
    ],
    "reserve": [
-    "Levee par la lecture du bytecode : l'orientation du bloc ne decide de rien.",
-    "`getDirectionIndependentSpeed()` multiplie le regime par",
-    "`FACING.getAxisDirection().getStep()` avant de le porter sur le vecteur",
-    "`facing` : le produit vaut toujours l'axe POSITIF. Un palier tourne vers",
-    "l'est et un tourne vers l'ouest poussent donc du meme cote."
+    "Levee par la lecture du bytecode. Deux etapes : Aeronautics multiplie le",
+    "regime par FACING.getAxisDirection().getStep() (le produit avec facing vaut",
+    "l'axe positif), puis Sable NIE le tout dans getScaledThrust(). Le premier",
+    "port avait manque la negation et poussait le cachalot a reculons.",
+    "Ce reseau n'a aucun regime enregistre ; son jumeau v3, meme topologie, en a",
+    "53, tous reproduits en module et en sens, et donne le meme signe aux helices."
    ]
   },
   {
    "id": "cargo-sens-de-poussee",
-   "date": "2026-09-23",
+   "date": "2026-09-28",
    "observateur": "Florian",
    "vaisseau": "cargo_airship.nbt",
    "instrument": "observation du deplacement",
    "grandeur": "convention_poussee",
-   "observation": "le vaisseau part a l'OPPOSE de l'helice, vers l'avant : paliers « north » a z=10 sur une coque qui va de z=3 a z=63, le cargo avance vers +z",
+   "observation": "le vaisseau part a l'OPPOSE de l'helice, vers l'avant (+z : paliers « north » a z=10 sur une coque qui va de z=3 a z=63) ; les deux helices tournent dans le MEME sens",
    "valide": [
-    "la poussee porte sur l'axe POSITIF du palier, pas sur son vecteur facing",
-    "PropellerBearingBlockEntity.getDirectionIndependentSpeed() : step(facing) x regime x (ScrollValue == 1 ? -1 : +1)",
-    "getThrust() = voiles^1,5 x cette vitesse x 0,2 — le module etait deja bon"
+    "les deux helices tournent dans le meme sens : c'est ce que donne le solveur, ancre sur 8 regimes enregistres sur 8 (+32 et +32)",
+    "la rotation VISIBLE du rotor suit le regime brut, sans la molette : getAngularSpeed() = getRotationSpeed(), qui ne lit pas ScrollValue",
+    "loi de poussee exacte : -getThrust() x getAirflowScaling() x pression, portee par le vecteur facing (BlockEntityPropeller.getScaledThrust, Sable)"
    ],
    "reserve": [
-    "Contradiction non levee. Les deux paliers du cargo portent des",
-    "ScrollValue differents (0 en x=11, 1 en x=21), et le solveur leur donne",
-    "le MEME signe de regime : modelisees ainsi, les deux poussees",
-    "s'annulent exactement et le cargo ne devrait pas avancer.",
-    "Les deux branches sont geometriquement miroirs, mais l'algebre de",
-    "Create y compte 4 inversions de boite a droite contre 0 a gauche —",
-    "parite paire, donc meme sens. Aucun regime n'est enregistre sur ces",
-    "deux branches (le fichier a ete sauvegarde helices a l'arret), donc le",
-    "fichier ne tranche pas.",
-    "LA QUESTION QUI TRANCHE : sur le cargo en marche, les deux helices",
-    "tournent-elles dans le meme sens ou en sens opposes ?"
+    "Contradiction non levee, et resserree. Le fichier porte ScrollValue 0 en",
+    "x=11 (RIGHT_HANDED, « tire en sens horaire ») et 1 en x=21 (LEFT_HANDED,",
+    "« pousse en sens horaire »). Meme sens de rotation, molettes opposees : avec",
+    "la loi exacte les deux poussees s'annulent au newton pres, et le cargo tel",
+    "qu'enregistre n'avance pas.",
+    "Le palier x=21 pousse deja vers +z, vers l'avant. C'est celui en x=11 qui",
+    "pousse vers l'arriere. Pour que le cargo avance comme observe, il faut qu'en",
+    "jeu ce palier soit lui aussi en « pousse en sens horaire » — la molette",
+    "aurait change depuis la sauvegarde — ou qu'il porte moins de voiles que",
+    "l'autre (les deux comptages sont signales incertains).",
+    "LA VERIFICATION QUI TRANCHE : en jeu, lire la molette des deux paliers du",
+    "cargo. Si les deux sont sur la meme option, re-sauvegarder le .nbt suffit."
    ]
   }
  ]

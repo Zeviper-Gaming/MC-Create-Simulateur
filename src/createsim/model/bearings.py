@@ -113,20 +113,6 @@ class Bearing:
     def sails_known(self) -> bool:
         return not self.assembled
 
-    @property
-    def thrust_axis(self) -> tuple[float, float, float] | None:
-        """L'axe POSITIF du palier — la direction ou sa poussee s'exerce.
-
-        `PropellerBearingBlockEntity.getDirectionIndependentSpeed()` multiplie
-        le vecteur `facing` par `FACING.getAxisDirection().getStep()`. Le
-        produit vaut toujours l'unite positive de l'axe : un palier tourne vers
-        le nord et un tourne vers le sud poussent dans le MEME sens. On inverse
-        par le regime ou par la molette, jamais en retournant le bloc.
-        """
-        if self.step is None:
-            return None
-        return tuple(abs(c) for c in self.step)
-
     def in_front(self, q: Pos) -> bool:
         if self.step is None or self.start is None:
             return False
@@ -136,10 +122,13 @@ class Bearing:
     def report(self) -> dict:
         out = {
             "pos": list(self.pos), "bloc": self.name, "orientation": self.facing,
-            "sens_de_poussee": ("axe %s positif%s"
+            # A regime positif : l'axe NEGATIF, retourne par la molette
+            # (voir `propeller_forces`, port de getScaledThrust).
+            "sens_de_poussee": ("axe %s %s a regime positif"
                                 % ("xyz"[self.step.index(max(self.step,
                                                              key=abs))],
-                                   "" if self.handedness > 0 else ", molette inversee")
+                                   "negatif" if self.handedness > 0 else
+                                   "positif (molette inversee)")
                                 if self.step else None),
             "voiles": None if self.assembled else self.sails,
             "blocs_rotor": len(self.rotor),

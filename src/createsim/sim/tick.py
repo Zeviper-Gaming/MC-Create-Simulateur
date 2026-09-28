@@ -293,7 +293,9 @@ class Simulation:
             out.append(lev)
         out.extend(F.propeller_forces(
             self.bearings.of_type("aeronautics:propeller_bearing"), st.speeds, t,
-            turn))
+            turn, position=st.position, velocity=st.velocity,
+            omega=st.angular_velocity, com=self.mass.com,
+            pressure_at=self.curve.at))
         out.extend(F.wheel_forces(self.model.structure, self.model.props,
                                   st.speeds, st.signals,
                                   self.options.ground_friction, t,

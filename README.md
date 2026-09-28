@@ -276,9 +276,14 @@ createsim validate
 python -m pytest
 ```
 
+Une trentaine de tests ouvrent une vraie fenêtre, OpenGL compris. Ils la gardent hors
+écran (`WA_DontShowOnScreen`) : une suite complète ne fait plus clignoter l'application
+des dizaines de fois en volant le focus. `CREATESIM_TESTS_VISIBLES=1` les remet à
+l'écran pour regarder un test.
+
 | Niveau | Critère | Résultat |
 |---|---|---|
-| 1 — concordance interne | régimes du NBT retrouvés à 0,5 tr/min près | **8/8** sur `cargo_airship`, **53/53** sur `cachalot_volant_v3` |
+| 1 — concordance interne | régimes du NBT retrouvés à 0,5 tr/min près, **et dans le bon sens** | **8/8** sur `cargo_airship`, **53/53** sur `cachalot_volant_v3`, module et sens |
 | 2 — cohérence analytique | `v(t) = v_max(1−e^(−t/τ))`, τ = m/k, à mieux de 1 % | **0,000 %**, τ mesuré 2,260 s vs 2,260 s |
 | 2b — transitoire du gaz | remplissage en ~9 s (180 ticks) | 63,2 % du volume en **7,00 s** |
 
@@ -489,21 +494,59 @@ glisse avec le vaisseau ne dirait plus rien de la distance parcourue.
 
 ## Le sens de poussée d'une hélice, et ce qu'il a révélé
 
-La mesure en jeu était simple : **le cargo part à l'opposé de l'hélice**. Le
-bytecode donne mieux que le signe, il donne la règle.
+La mesure en jeu était simple : **le vaisseau part à l'opposé de ses hélices**. Le
+bytecode donne mieux que le signe, il donne la loi — en deux étages, dans deux mods
+différents, et c'est pour avoir lu le premier sans le second que le premier port
+était faux.
 
 ```java
-getDirectionIndependentSpeed() = FACING.getAxisDirection().getStep()   // +1 est/haut/sud, −1 ouest/bas/nord
-                               × rotationSpeed × 10/3                   // ⇒ le régime de Create
-                               × (ScrollValue == 1 ? −1 : +1)           // molette, enum ThrustDirection
-getThrust() = voiles^1,5 × cette vitesse × 0,2                          // portée par le vecteur facing
+// Aeronautics — PropellerBearingBlockEntity
+v          = FACING.getAxisDirection().getStep()    // +1 est/haut/sud, −1 ouest/bas/nord
+           × rotationSpeed × 10/3                    // ⇒ le régime de Create
+           × (ScrollValue == 1 ? −1 : +1)            // molette, enum ThrustDirection
+getThrust  = voiles^1,5 × v × 0,2
+getAirflow = voiles^0,5 × v × 0,05
+
+// Sable — BlockEntityPropeller, appliqué au centre du palier selon facing
+getScaledThrust = −getThrust × getAirflowScaling × pression
+getAirflowScaling = clamp(1 + (vitesse au palier · facing) / getAirflow, 0, 1)
 ```
 
-`facing × step(facing)` vaut **toujours l'axe positif**. Un palier tourné vers le
-nord et un tourné vers le sud poussent donc du **même** côté : on inverse une
-hélice par le sens de rotation ou par la molette, jamais en retournant le bloc.
-Le module, lui, était déjà juste — le facteur 10/3 et les degrés par tick
-s'annulent exactement.
+Trois conséquences, aucune intuitive.
+
+**Le sens.** `facing × step(facing)` vaut l'axe positif, et la négation de Sable le
+retourne : à régime positif et molette à droite, un palier pousse vers l'axe
+**négatif**, qu'il regarde vers le nord ou vers le sud. On inverse une hélice par le
+sens de rotation ou par la molette, jamais en retournant le bloc. Le premier port avait
+manqué la négation et poussait le `cachalot_volant_v4` **à reculons** — vers ses
+hélices, x = +1,31 au lieu de −1,66.
+
+**Le plafond.** `getAirflow` est la vitesse de l'air que l'hélice brasse. Quand le
+vaisseau l'atteint le long de l'axe, la poussée tombe à zéro, linéairement : une hélice
+ne peut pas pousser plus vite que son propre souffle, quelle que soit la traînée. Les
+constantes étaient dans les tables depuis L0, sourcées, et **jamais appliquées**.
+
+**La pression**, au centre du palier : une hélice pousse moins en altitude, exactement
+comme un ballon porte moins. Elle manquait aussi.
+
+La rotation **visible** d'un rotor, elle, suit le régime brut : `getAngularSpeed()` ne
+lit pas la molette. Deux hélices qu'on voit tourner dans le même sens ont donc le même
+signe de régime — c'est ce qui a permis de trancher le solveur, et de resserrer la
+dernière contradiction.
+
+### Le cargo, tel qu'enregistré, n'avance pas
+
+Ses deux paliers portent des molettes opposées — `ScrollValue` 0 en x = 11, 1 en
+x = 21 — et tournent dans le même sens, ce que le jeu confirme et que le solveur
+retrouve, ancré sur 8 régimes enregistrés sur 8. Avec la loi exacte, leurs poussées
+s'annulent au newton près. Or le cargo avance en jeu.
+
+Le palier x = 21 pousse déjà vers l'avant ; c'est celui en x = 11 qui pousse vers
+l'arrière. Pour que le cargo avance, il faut qu'en jeu ce palier soit lui aussi en
+« pousse en sens horaire » — la molette aurait changé depuis la sauvegarde — ou qu'il
+porte moins de voiles que l'autre. La contradiction est écrite dans
+`data/mesures/jeu.json` et figée par un test : le jour où le fichier change, le test
+casse et la réserve doit être relue.
 
 ### Le défaut que ça a mis au jour
 
@@ -1128,7 +1171,7 @@ Le logiciel doit le dire plutôt que de produire un chiffre faux.
 | Comptage des voiles | heuristique bornée au demi-espace avant du palier | drapeau de fiabilité (F6.9) |
 | Collisions | traverse les obstacles | plan de sol optionnel seulement |
 | Mods tiers | masse par défaut de 1,0 | barre d'erreur affichée (F5.8) |
-| Sens de poussée d'une hélice | établi au bytecode : axe positif du palier × signe du régime × molette | mesuré en jeu sur le cargo ; reste une contradiction sur ses deux hélices, écrite dans `data/mesures/jeu.json` |
+| Sens de poussée d'une hélice | établi au bytecode : axe négatif du palier × signe du régime × molette, puis plafond d'airflow et pression | mesuré en jeu ; reste une contradiction sur les deux hélices du cargo — le fichier enregistré les fait s'annuler — écrite dans `data/mesures/jeu.json` |
 | Signe de rotation du c1_air_cruiser | 4 relevés sur 18 tournent à l'inverse du calcul | signalé comme anomalie grave (F5.14), pas masqué |
 
 Le solveur cinétique reste incomplet sur sept régimes de la flotte, et la concordance

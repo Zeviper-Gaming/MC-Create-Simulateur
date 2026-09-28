@@ -15,6 +15,8 @@ rattache ce simulateur au jeu.
 """
 from __future__ import annotations
 
+import math
+
 import json
 from pathlib import Path
 
@@ -116,13 +118,13 @@ def test_le_modele_reproduit_la_mesure(mesure):
         poussees = F.propeller_forces(bearings, speeds, sim.tables)
         assert poussees
         for force, bearing in zip(poussees, bearings):
-            # L'axe POSITIF du palier, jamais son vecteur `facing` : c'est
-            # exactement ce que la mesure a corrige.
+            # getScaledThrust() = -getThrust() x ... : a regime positif et
+            # molette a droite, l'axe NEGATIF du palier, quel que soit le sens
+            # du bloc. La negation est dans Sable, pas dans Aeronautics.
             axe = tuple(abs(c) for c in F.FACING_VEC[bearing.facing])
             produit = sum(a * b for a, b in zip(force.vector, axe))
-            attendu = bearing.handedness
-            assert produit * attendu > 0, (
-                "%s : a regime positif, la poussee va vers l'axe positif du "
+            assert produit * bearing.handedness < 0, (
+                "%s : a regime positif, la poussee va vers l'axe NEGATIF du "
                 "palier, renversee seulement par la molette" % mesure["id"])
     else:
         pytest.fail("grandeur inconnue : %s" % grandeur)
@@ -206,3 +208,53 @@ def test_un_reseau_qui_disjoncte_dit_ce_qu_il_demandait(cargo):
 
     anomaly = next(a for a in sim.report()["anomalies"] if a["code"] == "F5.4")
     assert "20480" in anomaly["detail"] and "8192" in anomaly["detail"]
+
+
+# --- le sens de poussee, confronte aux vaisseaux ----------------------------
+def _poussee_nette(model, regime: float) -> tuple[float, float, float]:
+    from createsim.sim import forces as F
+    from createsim.sim.kinetics import solve_speeds
+    kin = model.organ("cinetique")
+    # Toutes les transmissions a fond : sinon un levier a 15 decouple la
+    # branche, le regime vaut zero, et le SIGNE du solveur n'intervient plus —
+    # le test passerait sans rien verifier.
+    ouvertes = {p: 0 for p, b in kin.nodes.items()
+                if "analog_transmission" in b["name"]}
+    signes = solve_speeds(kin, ouvertes).speeds
+    paliers = model.organ("paliers").of_type("aeronautics:propeller_bearing")
+    assert all(abs(signes.get(b.pos, 0.0)) > 0 for b in paliers), (
+        "chaque helice doit etre entrainee, sinon son signe n'est pas lu")
+    # le signe de CHAQUE palier vient du solveur, ancre sur le releve : c'est
+    # lui qui decide si deux helices s'ajoutent ou se combattent
+    regimes = {b.pos: math.copysign(regime, signes[b.pos]) for b in paliers}
+    forces = F.propeller_forces(paliers, regimes, model.tables)
+    return tuple(sum(f.vector[i] for f in forces) for i in range(3))
+
+
+def test_le_cachalot_part_a_l_oppose_de_ses_helices(cachalot_v4_model):
+    """La mesure, telle qu'elle a ete formulee : le vaisseau part a l'OPPOSE de
+    ses helices. Le cachalot v4 porte ses trois paliers a l'arriere (x = 62 a
+    66, sur une coque qui va de 1 a 67) : la poussee nette doit aller vers -x.
+
+    Avant le port exact de `getScaledThrust`, le modele le poussait vers +x —
+    a reculons. Son reseau n'a aucun regime enregistre ; son jumeau v3, meme
+    topologie, en a 53, tous reproduits, et donne le meme signe aux helices.
+    """
+    x, _, z = _poussee_nette(cachalot_v4_model, 100.0)
+    assert x < 0, "les helices sont a l'arriere, en x eleve : il doit partir vers -x"
+    assert abs(z) < 1e-6 * abs(x), "trois paliers alignes : pas de poussee laterale"
+
+
+def test_le_cargo_tel_qu_enregistre_annule_ses_deux_poussees(cargo):
+    """La contradiction, ecrite comme un test plutot que cachee.
+
+    Le fichier porte ScrollValue 0 en x=11 et 1 en x=21 ; les deux helices
+    tournent dans le MEME sens — confirme en jeu, et c'est aussi ce que donne
+    le solveur, ancre sur 8 regimes sur 8. Avec la loi exacte, leurs poussees
+    s'annulent au newton pres : le cargo tel qu'enregistre n'avance pas.
+
+    Or il avance en jeu. Le jour ou le fichier change, ce test casse, et la
+    reserve de `data/mesures/jeu.json` doit etre relue.
+    """
+    net = _poussee_nette(cargo, 100.0)
+    assert all(abs(c) < 1e-6 for c in net), net

@@ -5,9 +5,40 @@ sans jeu et sans intervention.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+
+def pytest_configure(config):
+    """Les fenetres des tests ne s'affichent pas a l'ecran.
+
+    Une trentaine de tests ouvrent une vraie fenetre — lanceur, coupe,
+    assiette, sol, edition — et une suite complete la faisait donc clignoter
+    des dizaines de fois, en volant le focus a chaque fois. Elles restent
+    pourtant de vraies fenetres : `WA_DontShowOnScreen` garde le contexte
+    OpenGL et le rendu (capture comprise), il retire seulement l'affichage.
+    La plateforme Qt « offscreen » aurait ete plus simple, mais elle n'a pas
+    d'OpenGL sous Windows : le rendu 3D n'y serait plus teste du tout.
+
+    `CREATESIM_TESTS_VISIBLES=1` les remet a l'ecran, pour regarder un test.
+    """
+    if os.environ.get("CREATESIM_TESTS_VISIBLES"):
+        return
+    try:
+        from PySide6 import QtCore, QtWidgets
+    except ImportError:                              # interface non installee
+        return
+    show = QtWidgets.QWidget.show
+
+    def show_hors_ecran(self):
+        if self.isWindow():
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen,
+                              True)
+        show(self)
+
+    QtWidgets.QWidget.show = show_hors_ecran
 
 from createsim.data.tables import Tables
 from createsim.model.vehicle import VehicleModel

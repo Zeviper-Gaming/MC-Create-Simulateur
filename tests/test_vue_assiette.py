@@ -171,3 +171,15 @@ def test_rotation_coupee_laisse_le_rendu_a_plat(qt_app):
         assert "tangage" not in noms
     finally:
         w.close()
+
+
+def test_les_fenetres_de_test_n_apparaissent_pas_a_l_ecran(window):
+    """Une suite complete ouvrait une trentaine de fenetres a la suite, en
+    volant le focus a chacune. `conftest.pytest_configure` les garde hors
+    ecran — sans les rendre factices : le contexte OpenGL existe toujours."""
+    import os
+    from PySide6 import QtCore
+    if os.environ.get("CREATESIM_TESTS_VISIBLES"):
+        pytest.skip("fenetres volontairement visibles")
+    assert window.testAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen)
+    assert window.view.isValid(), "hors ecran, mais OpenGL doit rester actif"

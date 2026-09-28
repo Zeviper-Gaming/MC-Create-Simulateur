@@ -137,44 +137,80 @@ def levitite_force(organ, total_mass: float, tables) -> Force | None:
 
 
 def propeller_forces(bearings, speeds: dict[Pos, float], tables,
-                     rotation=None) -> list[Force]:
-    """Poussee = voiles^1,5 x RPM x 0,2, appliquee au palier, selon son axe.
+                     rotation=None, *, position=None, velocity=None,
+                     omega=None, com=None, pressure_at=None) -> list[Force]:
+    """Port exact de `BlockEntityPropeller.getScaledThrust()` (Sable).
 
-    Le SENS ne suit pas le vecteur `facing`, contrairement a ce qu'on attendrait
-    — et c'est le piege que la mesure en jeu a revele.
-    `PropellerBearingBlockEntity.getDirectionIndependentSpeed()` multiplie le
-    regime par `FACING.getAxisDirection().getStep()` (+1 est/haut/sud,
-    -1 ouest/bas/nord) avant de porter le resultat sur le vecteur `facing` : le
-    produit vaut toujours l'axe POSITIF. Un palier tourne vers le nord et un
-    tourne vers le sud poussent donc dans le meme sens.
+    Sable applique `facing x getScaledThrust()` au centre du palier, avec
 
-    Ce qui renverse la poussee, c'est le signe du regime ou l'option a la
-    molette (`ScrollValue`, enum ThrustDirection) — jamais l'orientation du
-    bloc. Verifie en jeu sur le cargo : paliers « north », le vaisseau part vers
-    +z, a l'oppose des helices (`data/mesures/jeu.json`).
+        getScaledThrust = -getThrust() x getAirflowScaling() x pression
+        getThrust       = voiles^1,5 x v x 0,2
+        getAirflow      = voiles^0,5 x v x 0,05
+        v               = step(facing) x regime x molette      (getDirectionIndependentSpeed)
+        scaling         = clamp(1 + (vitesse au palier . facing) / airflow, 0, 1)
+
+    Trois choses en sortent, et aucune n'est intuitive.
+
+    Le SENS : `facing x step(facing)` vaut l'axe positif, et la NEGATION de
+    `getScaledThrust` le retourne. A regime positif et molette a droite, un
+    palier pousse donc vers l'axe NEGATIF, qu'il regarde vers le nord ou vers
+    le sud. On inverse une helice par le regime ou par la molette (ScrollValue),
+    jamais en retournant le bloc.
+
+    Le PLAFOND : `airflow` est la vitesse de l'air que l'helice brasse. Quand le
+    vaisseau l'atteint le long de l'axe, la poussee tombe a zero — lineairement.
+    Une helice ne peut pas pousser un vaisseau plus vite que son propre souffle,
+    quelle que soit la trainee.
+
+    La PRESSION, enfin, au centre du palier : une helice pousse moins en
+    altitude, exactement comme un ballon porte moins.
+
+    Les constantes d'airflow etaient dans les tables depuis L0, sourcees, et
+    jamais appliquees.
     """
+    import numpy as np
+
     coef = tables.get("forces.propeller_bearing_thrust")
     exponent = tables.get("forces.propeller_sail_exponent")
+    air_mult = tables.get("forces.propeller_bearing_airflow")
+    air_exp = tables.get("forces.propeller_airflow_exponent")
+    centre = np.asarray(com if com is not None else (0.0, 0.0, 0.0), dtype=float)
+    spin = np.asarray(omega if omega is not None else (0.0, 0.0, 0.0), dtype=float)
     out: list[Force] = []
     for b in bearings:
-        rpm = speeds.get(b.pos, 0.0)
-        vec = b.thrust_axis
-        if vec is None:
+        normal = FACING_VEC.get(b.facing) if b.facing else None
+        if normal is None:
             continue
+        rpm = speeds.get(b.pos, 0.0)
+        step = 1.0 if sum(normal) > 0 else -1.0
+        independent = step * rpm * b.handedness          # getDirectionIndependentSpeed
+        thrust = (b.sails ** exponent) * independent * coef if b.sails else 0.0
+        airflow = (b.sails ** air_exp) * independent * air_mult if b.sails else 0.0
+        point = (b.pos[0] + 0.5, b.pos[1] + 0.5, b.pos[2] + 0.5)
+        facing = np.asarray(turn(normal, rotation), dtype=float)
+        arm = np.asarray(turn(tuple(point[i] - centre[i] for i in range(3)),
+                              rotation), dtype=float)
+
+        scaling = 1.0
+        if velocity is not None and abs(airflow) > 0.001:
+            local = np.asarray(velocity, dtype=float) + np.cross(spin, arm)
+            scaling = min(1.0, max(0.0, (airflow + float(local @ facing)) / airflow))
+        pressure = 1.0
+        if pressure_at is not None and position is not None:
+            pressure = float(pressure_at(float(position[1]) + float(arm[1])))
+
         # Une helice a l'arret produit une force NULLE, pas une force absente :
         # sans cela la liste change d'un tick a l'autre, et une trace cesse
         # d'etre rejouable.
-        magnitude = ((b.sails ** exponent) * abs(rpm) * coef
-                     if rpm and b.sails else 0.0)
-        sign = (math.copysign(1.0, rpm) if rpm else 1.0) * b.handedness
-        point = (b.pos[0] + 0.5, b.pos[1] + 0.5, b.pos[2] + 0.5)
+        push = -thrust * scaling * pressure
         label = "helice %d voiles a %.0f tr/min" % (b.sails, abs(rpm))
         if b.handedness < 0:
             label += ", molette inversee"
+        if scaling < 0.999:
+            label += ", souffle a %.0f%%" % (scaling * 100)
         if not b.reliable:
             label += " (comptage incertain)"
-        out.append(Force("helice",
-                         turn(tuple(c * magnitude * sign for c in vec), rotation),
+        out.append(Force("helice", tuple(float(c * push) for c in facing),
                          point, label, b.pos))
     return out
 
