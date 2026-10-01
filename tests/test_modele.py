@@ -11,9 +11,15 @@ import pytest
 
 # --- parite avec le calculateur statique -----------------------------------
 def test_masse_et_centre_de_masse(cargo):
+    # Plus de parite avec le calculateur statique sur ce point, et c'est voulu :
+    # il devinait les classes de masse par mots-cles, comme le simulateur avant
+    # l'etape 1 de la remise a niveau. 1 856,75 comptait les 102 blocs de fer
+    # du cargo a 1 au lieu de 4 (#c:storage_blocks -> #sable:super_heavy) et
+    # ignorait les dalles doubles. Masse resolue par les tags du jeu :
+    # voir tests/test_masses_resolues.py.
     masse = cargo.organ("masse")
-    assert masse.total == pytest.approx(1856.75, abs=0.01)
-    assert [round(v, 2) for v in masse.com] == [16.54, 14.44, 31.41]
+    assert masse.total == pytest.approx(2135.5, abs=0.01)
+    assert [round(v, 2) for v in masse.com] == [16.5, 13.32, 34.09]
 
 
 def test_geometrie_du_ballon(cargo):
@@ -40,9 +46,12 @@ def test_blocs_etanches_et_trainee(cargo):
 
 def test_bilan_de_vol(sim):
     bilan = sim.report()["bilan"]
-    assert bilan["ratio_portance_poids"] == pytest.approx(2.424, abs=0.001)
+    # 2,424 et 283,2 reposaient sur la masse devinee (1 856,75) ; la masse
+    # resolue (2 135,5) donne 2,107 et 249,3. Toujours a capacite MAXIMALE :
+    # le libelle est a revoir a l'etape 8 du plan (constat S2).
+    assert bilan["ratio_portance_poids"] == pytest.approx(2.107, abs=0.001)
     assert bilan["vole"] is True
-    assert bilan["altitude_equilibre"] == pytest.approx(283.2, abs=0.1)
+    assert bilan["altitude_equilibre"] == pytest.approx(249.3, abs=0.1)
 
 
 def test_aucun_bloc_hors_table_sur_cette_reference(cargo):

@@ -32,7 +32,8 @@ def test_le_tenseur_vaut_la_somme_bloc_a_bloc(cargo):
     com = organ.com
     brut = np.zeros((3, 3))
     for pos, entry in cargo.structure.blocks.items():
-        m = cargo.props.mass(entry["name"])
+        # l'etat du bloc compte : une dalle double pese le double
+        m = cargo.props.mass(entry["name"], entry.get("props"))
         if m <= 0:
             continue
         d = np.array([pos[i] + 0.5 - com[i] for i in range(3)])
@@ -164,16 +165,23 @@ def test_une_rotation_non_finie_arrete_la_rotation_au_lieu_de_la_corrompre():
 
 
 # --- sur un vrai vaisseau ---------------------------------------------------
-def test_le_cargo_pique_du_nez_puis_se_stabilise(cargo):
-    """Le cargo porte sa portance en avant de son centre de masse : il pique, et
-    l'amortissement d'enveloppe l'arrete a un angle fini. Une assiette qui ne se
-    stabilise pas signale un amortissement absent ou de mauvais signe."""
+def test_le_cargo_bascule_puis_se_stabilise(cargo):
+    """Le centre de portance du cargo n'est pas a l'aplomb de son centre de
+    masse : il bascule, et l'amortissement d'enveloppe l'arrete a un angle fini.
+    Une assiette qui ne se stabilise pas signale un amortissement absent ou de
+    mauvais signe.
+
+    L'angle a change a l'etape 1 de la remise a niveau : -9,75° avec la masse
+    devinee, +2,57° avec la masse resolue. Les 102 blocs de fer, bas et a
+    l'arriere, ont recule le centre de masse de 2,7 blocs — le bras de levier
+    est passe de +2,09 (cabre) a -0,59 (pique). A confirmer en jeu (mesure V6).
+    """
     sim = Simulation(cargo, SimOptions())
     sim.run(1200)
     attitude = sim.report()["attitude"]
 
     assert attitude["active"]
-    assert attitude["tangage"] == pytest.approx(-9.75, abs=0.5)
+    assert attitude["tangage"] == pytest.approx(2.57, abs=0.5)
     assert max(abs(v) for v in attitude["vitesse_angulaire"]) < 1e-3
 
 
@@ -197,8 +205,11 @@ def test_l_assiette_d_equilibre_vaut_l_arctangente_du_bras_de_levier(cargo):
     tournant.run(1200)
     obtenu = tournant.report()["attitude"]["tangage"]
 
-    assert attendu == pytest.approx(9.82, abs=0.05)
-    assert abs(obtenu) == pytest.approx(attendu, abs=0.3)
+    # Masse resolue (etape 1) : bras -0,59, hauteur 13,19 -> -2,56°. Le tangage
+    # se compte en sens inverse du bras — il l'etait deja avec la masse devinee
+    # (bras +2,09 -> tangage -9,75°), c'est la convention, pas une coincidence.
+    assert attendu == pytest.approx(-2.56, abs=0.05)
+    assert obtenu == pytest.approx(-attendu, abs=0.3)
 
 
 def test_rotation_coupee_rend_exactement_la_trajectoire_d_avant(cargo):

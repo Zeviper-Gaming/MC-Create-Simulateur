@@ -60,7 +60,8 @@ class MassOrgan(Organ):
             name = b["name"]
             if not known(name):
                 unknown[name] += 1
-            m = mass_of(name)
+            # l'etat compte : une dalle double pese le double (surcharges Sable)
+            m = mass_of(name, b.get("props"))
             if m <= 0:
                 continue
             x, y, z = pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5
@@ -135,7 +136,7 @@ class MassOrgan(Organ):
             self.unknown[name] += sign
             if self.unknown[name] <= 0:
                 del self.unknown[name]
-        m = self.props.mass(name)
+        m = self.props.mass(name, entry.get("props"))
         if m <= 0:
             return
         m *= sign
@@ -159,10 +160,18 @@ class MassOrgan(Organ):
     def report(self) -> dict:
         com = self.com
         tensor = self.inertia()
+        resolved = self.props.resolved
         return {
             "masse": round(self.total, 2),
             "centre_de_masse": [round(v, 2) for v in com],
             "inertie": [[round(v, 1) for v in row] for row in tensor],
+            # d'ou viennent les masses : la resolution du jeu, ou une devinette
+            "origine_des_masses": (
+                "tags resolus depuis l'instance %s le %s (%s)"
+                % (resolved.instance, resolved.generated, resolved.path.name)
+                if resolved is not None else
+                "DEVINEES par mots-cles : table resolue absente, lancer "
+                "tools/extraire_masses.py"),
             "blocs_hors_table": {
                 "total": self.unknown_total,
                 "detail": self.unknown.most_common(10),

@@ -247,7 +247,8 @@ fichiers de données externes et versionnés, pas des constantes compilées.
 
 | Table | Contenu |
 |---|---|
-| `data/tables/masses.json` | classes de masse Sable et règles de résolution |
+| `data/tables/masses_resolues.json` | masse de chaque bloc et de chaque état, résolue comme le jeu, avec la source de chaque définition |
+| `data/tables/masses.json` | classes de masse Sable ; règles par mots-clés, en **repli** seulement |
 | `data/tables/pressure.json` | gravité et profil de pression (Hermite cubique) |
 | `data/tables/forces.json` | air chaud, levitite, hélices, roues, traînée |
 | `data/tables/kinetics.json` | rapports de rotation, générateurs, plafond de régime |
@@ -266,6 +267,22 @@ du jeu.
 
 **La mesure du jeu prime sur le calcul.** Quand un fichier contient des régimes enregistrés,
 le simulateur les affiche à côté des siens et publie l'écart.
+
+**Les masses sont résolues comme le jeu les résout.** Sable ne donne pas une masse par
+bloc : il applique des définitions (`data/*/physics_block_properties/*.json`) rattachées à
+des tags, dans un ordre qui décide des égalités de priorité. `tools/extraire_masses.py` lit
+les jars de l'instance **en lecture seule** — Minecraft, NeoForge et chaque mod — résout les
+tags, reproduit cet ordre (une `HashMap` Java puis un tri stable par priorité, lus au
+bytecode) et écrit `masses_resolues.json`. L'état du bloc compte : une dalle double pèse le
+double.
+
+```bash
+python tools/extraire_masses.py
+```
+
+À relancer après une mise à jour du modpack. Sans cette table, les masses sont devinées par
+mots-clés, et le diagnostic le signale (F5.15) : la devinette ratait les blocs de métal, soit
+13 % de masse en moins sur le cargo.
 
 ---
 
@@ -607,9 +624,9 @@ Un vaisseau ne tourne pas autour de son centre comme une bille : sa résistance 
 rotation dépend de **où** la masse est placée. Le tenseur se déduit donc de la
 géométrie, bloc par bloc, sans aucun coefficient ajustable — chaque cube plein de côté 1
 apporte `m/6` autour de chacun de ses axes, plus le transport de Huygens jusqu'au centre
-de masse. Le cargo donne une diagonale de `[545 837, 435 337, 219 341]` : il est trois
-fois plus dur à faire rouler qu'à faire piquer, ce qui est exactement ce qu'on attend
-d'une coque longue.
+de masse. Le cargo donne une diagonale de `[641 180, 515 958, 237 346]` (masses résolues
+par les tags, étape 1 de la remise à niveau) : il est près de trois fois plus dur à faire
+rouler qu'à faire piquer, ce qui est exactement ce qu'on attend d'une coque longue.
 
 L'organe de masse était déjà **différentiel** ; il accumule maintenant six moments
 d'ordre deux en plus. Supprimer un bloc met le tenseur à jour sans rebalayer les 20 658
@@ -661,9 +678,13 @@ géométrie**, ni de l'inertie ni de l'amortissement, qui ne décident que du ch
 arriver :
 
 ```
-cargo_airship    bras 2,09   hauteur 12,07   ->  arctan = 9,82°
-                 simulation                       9,75°      (0,7 % d'écart)
+cargo_airship    bras −0,59   hauteur 13,19   ->  arctan = 2,56°
+                 simulation                        2,57°      (0,4 % d'écart)
 ```
+
+Ces chiffres datent de l'étape 1 de la remise à niveau. Avec la masse devinée d'avant, le
+bras valait +2,09 et l'angle 9,82° : 102 blocs de fer, bas et à l'arrière, comptaient 1 au
+lieu de 4. La vérification tenait déjà — elle éprouve le couple, pas la masse.
 
 Un écart plus large signalerait un couple mal formé, pas un réglage à retoucher. C'est le
 même esprit que le niveau 2 du cahier, appliqué à la rotation.
@@ -1138,10 +1159,12 @@ branche que le jeu laisse à l'arrêt.
 
 ## Deux corrections apportées au calculateur statique
 
-Le noyau reproduit à l'identique toutes les grandeurs de `/mc-create-engineer` — masse,
+Le noyau reproduisait à l'identique toutes les grandeurs de `/mc-create-engineer` — masse,
 centre de masse, capacités de poche, régimes, bilan SU, ratio portance/poids, altitude
 d'équilibre — sur `cargo_airship`, `cachalot_volant_v4` et `c1_air_cruiser`. Deux points
-divergent, volontairement.
+divergeaient, volontairement ; un troisième s'y ajoute depuis la remise à niveau : la
+**masse**, que le calculateur devinait par mots-clés et que le simulateur résout désormais
+comme le jeu (voir « Fidélité et traçabilité »).
 
 **La constante de temps était en ticks, elle est en secondes.** Sable fait tourner un monde
 dont la gravité vaut 11 blocs/s² et qui avance de 1/20 s par tick ; l'accélération est donc
@@ -1170,7 +1193,7 @@ Le logiciel doit le dire plutôt que de produire un chiffre faux.
 | Moteurs électriques | non reconnus comme sources | signalés comme réseau sans source (F5.7) |
 | Comptage des voiles | heuristique bornée au demi-espace avant du palier | drapeau de fiabilité (F6.9) |
 | Collisions | traverse les obstacles | plan de sol optionnel seulement |
-| Mods tiers | masse par défaut de 1,0 | barre d'erreur affichée (F5.8) |
+| Mods absents de l'instance | les blocs d'un mod dont le jar n'a pas été lu retombent sur 1,0 | barre d'erreur affichée (F5.8) ; le `c1_air_cruiser` en compte 1 171 (createdeco, copycats, createbigcannons) |
 | Sens de poussée d'une hélice | établi au bytecode : axe négatif du palier × signe du régime × molette, puis plafond d'airflow et pression | mesuré en jeu ; reste une contradiction sur les deux hélices du cargo — le fichier enregistré les fait s'annuler — écrite dans `data/mesures/jeu.json` |
 | Signe de rotation du c1_air_cruiser | 4 relevés sur 18 tournent à l'inverse du calcul | signalé comme anomalie grave (F5.14), pas masqué |
 

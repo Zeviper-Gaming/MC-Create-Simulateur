@@ -170,26 +170,107 @@ class Tables:
         return out
 
 
+#: la table des masses telles que le jeu les resout, produite par
+#: `tools/extraire_masses.py` a partir des jars de l'instance
+RESOLVED_MASSES = "masses_resolues.json"
+
+
+class ResolvedMasses:
+    """Les definitions `physics_block_properties` de Sable, dans l'ordre du jeu.
+
+    Chaque etat de bloc prend la masse de la DERNIERE definition qui le couvre,
+    la surcharge d'etat (`type=double`, `extended=true`…) l'emportant sur la
+    valeur de base de la meme definition ; a defaut, la masse par defaut de
+    Sable. L'ordre (`rang`) a ete etabli a l'extraction : HashMap Java puis tri
+    stable par priorite, lus au bytecode.
+    """
+
+    def __init__(self, doc: dict, path: Path):
+        self.path = path
+        self.default = float(doc["masse_defaut"]["valeur"])
+        self.default_source = doc["masse_defaut"]["source"]
+        self.instance = doc.get("instance")
+        self.generated = doc.get("genere_le")
+        self.namespaces = frozenset(doc.get("espaces_de_noms", ()))
+        self.by_block: dict[str, list[tuple]] = {}
+        for d in sorted(doc["definitions"], key=lambda d: d["rang"]):
+            overrides = []
+            for cond, value in d["surcharges"].items():
+                pairs = tuple(tuple(p.split("=", 1)) for p in cond.split(",") if "=" in p)
+                overrides.append((pairs, float(value)))
+            rule = (d["masse"], tuple(overrides), d["id"], d["source"])
+            for block in d["blocs"]:
+                self.by_block.setdefault(block, []).append(rule)
+
+    @classmethod
+    def load(cls, directory: Path) -> "ResolvedMasses | None":
+        path = Path(directory) / RESOLVED_MASSES
+        if not path.is_file():
+            return None
+        return cls(json.loads(path.read_text(encoding="utf-8")), path)
+
+    def resolve(self, name: str, props: dict | None) -> tuple[float, str]:
+        """(masse, source de la regle qui l'a fixee)."""
+        props = props or {}
+        mass, source = self.default, self.default_source
+        for base, overrides, ident, where in self.by_block.get(name, ()):
+            if base is not None:
+                mass, source = base, "%s (%s)" % (ident, where)
+            for pairs, value in overrides:
+                if all(str(props.get(k)) == v for k, v in pairs):
+                    mass = value
+                    source = "%s, surcharge %s (%s)" % (
+                        ident, ",".join("%s=%s" % p for p in pairs), where)
+        return mass, source
+
+
 class BlockProperties:
     """Resolution nom de bloc -> propriete physique, d'apres les tables.
 
-    Pure consultation de tables : l'ordre des regles reproduit exactement celui
-    des datapacks Sable (les priorites de tags), sans aucun calcul physique.
+    Pure consultation de tables, sans aucun calcul physique. Les masses
+    viennent de `masses_resolues.json` quand elle existe — la resolution meme
+    du jeu. A defaut, des regles par mots-cles prennent le relais, et
+    `resolved` le dit : ce sont alors des masses DEVINEES.
     """
 
     def __init__(self, tables: Tables):
         self.t = tables
-        self._mass_cache: dict[str, float] = {}
+        self._mass_cache: dict[tuple, float] = {}
+        self.resolved = ResolvedMasses.load(tables.directory)
 
     # -- masses ------------------------------------------------------------
-    def mass(self, name: str) -> float:
-        got = self._mass_cache.get(name)
+    def mass(self, name: str, props: dict | None = None) -> float:
+        """La masse d'un ETAT de bloc : une dalle double pese le double."""
+        key = (name, tuple(sorted(props.items())) if props else ())
+        got = self._mass_cache.get(key)
         if got is None:
-            got = self._resolve_mass(name)
-            self._mass_cache[name] = got
+            got = self._resolve_mass(name, props)
+            self._mass_cache[key] = got
         return got
 
-    def _resolve_mass(self, name: str) -> float:
+    def mass_source(self, name: str, props: dict | None = None) -> str:
+        """D'ou vient la masse de cet etat de bloc — la regle d'or, affichable."""
+        if not self.has_collision(name):
+            return ("aucune forme de collision : masse nulle "
+                    "(PhysicsBlockPropertyHelper.getMass -> isSolid)")
+        if self.resolved is None:
+            return "DEVINEE par mots-cles (%s absente)" % RESOLVED_MASSES
+        return self.resolved.resolve(name, props)[1]
+
+    def _resolve_mass(self, name: str, props: dict | None = None) -> float:
+        if self.resolved is not None:
+            # Sable ne donne de masse qu'aux blocs ayant une forme de collision.
+            # La forme n'existe qu'en jeu : la liste des blocs sans collision
+            # en tient lieu, avec les memes regles que la peau de la coque.
+            if not self.has_collision(name):
+                return self.t.get("masses.no_collision")
+            return self.resolved.resolve(name, props)[0]
+        return self._guess_mass(name)
+
+    def _guess_mass(self, name: str) -> float:
+        """Repli, quand la table resolue manque : des mots-cles. Ils ratent les
+        blocs de metal (`iron_block` n'a aucun des mots cherches) et ignorent
+        l'etat du bloc — c'etait 13 % de masse en moins sur le cargo."""
         t = self.t
         g = t.get
         if name in t.cached_set("masses.no_collision_blocks"):
@@ -237,7 +318,15 @@ class BlockProperties:
         return name in self.t.cached_set("forces.wheel_mount_blocks")
 
     def is_known_namespace(self, name: str) -> bool:
-        return name.split(":")[0] in self.t.cached_set("masses.known_namespaces")
+        """Vrai si la masse de ce bloc repose sur autre chose qu'un defaut.
+
+        Avec la table resolue, tout bloc d'un mod dont le jar a ete lu a sa
+        masse exacte — la valeur par defaut de Sable en est une. Sans elle,
+        seuls les espaces couverts par les mots-cles le sont."""
+        space = name.split(":")[0]
+        if self.resolved is not None:
+            return space in self.resolved.namespaces
+        return space in self.t.cached_set("masses.known_namespaces")
 
     def has_collision(self, name: str) -> bool:
         return (name not in self.t.cached_set("masses.no_collision_blocks")

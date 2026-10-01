@@ -565,6 +565,16 @@ class Simulation:
                                % (list(key), len(sides["tx"]), len(sides["rx"]))),
                     "blocs": [list(p) for p in (sides["tx"] + sides["rx"])[:8]],
                 })
+        if self.model.props.resolved is None:
+            out.append({
+                "code": "F5.15", "gravite": "grave",
+                "titre": "masses devinees par mots-cles",
+                "detail": ("data/tables/masses_resolues.json est absente : la classe "
+                           "de masse de chaque bloc est devinee. La devinette rate les "
+                           "blocs de metal et ignore l'etat des blocs (13 % de masse "
+                           "en moins sur le cargo). Lancer tools/extraire_masses.py."),
+                "blocs": [],
+            })
         if self.mass.unknown_total:
             out.append({
                 "code": "F5.8", "gravite": "limite du modele",
